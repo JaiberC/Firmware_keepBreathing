@@ -50,7 +50,8 @@ static volatile bool data_transmitted;
 
 #define DATA_SIZE	(sizeof(fifo_data) - 1)
 
-////// Para el timer
+///////////////////// Timer defines ////////////////////////////////////////////
+
 struct k_work my_work;
 struct k_timer my_timer;
 extern void my_expiry_function(struct k_timer *timer_id);

@@ -1,154 +1,116 @@
 /*
- * Copyright (c) 2016 Intel Corporation
+ * Copyright (c) 2020 Libre Solar Technologies GmbH
  *
  * SPDX-License-Identifier: Apache-2.0
  */
 
 #include <zephyr.h>
 #include <sys/printk.h>
-#include <devicetree.h>
-#include <device.h>
-#include <drivers/gpio.h>
-#include <drivers/uart.h>
 #include <drivers/adc.h>
-#include <console/console.h>
-#include <console/tty.h>
-#include <string.h>
-#include <stdio.h>
 
-
-////////////////////blinky defines//////////////////////////
-/* 1000 msec = 1 sec */
-#define SLEEP_TIME_MS   1000
-
-/* The devicetree node identifier for the "led0" alias. */
-#define LED0_NODE DT_ALIAS(led0)
-
-#if DT_NODE_HAS_STATUS(LED0_NODE, okay)
-#define LED0	DT_GPIO_LABEL(LED0_NODE, gpios)
-#define PIN	DT_GPIO_PIN(LED0_NODE, gpios)
-#define FLAGS	DT_GPIO_FLAGS(LED0_NODE, gpios)
-#else
-/* A build error here means your board isn't set up to blink an LED. */
-#error "Unsupported board: led0 devicetree alias is not defined"
-#define LED0	""
-#define PIN	0
-#define FLAGS	0
+#if !DT_NODE_EXISTS(DT_PATH(zephyr_user)) || \
+	!DT_NODE_HAS_PROP(DT_PATH(zephyr_user), io_channels)
+#error "No suitable devicetree overlay specified"
 #endif
 
+#define ADC_NUM_CHANNELS	DT_PROP_LEN(DT_PATH(zephyr_user), io_channels)
 
-////////////////////////usart defines/////////////////////////////////////////////
+#if ADC_NUM_CHANNELS > 3
+#error "Currently only 1 2 or 3 channels supported in this sample"
+#endif
 
-/* 1000 msec = 1 sec */
-#define SLEEP_TIME  100
-#define UART_DEVICE_NAME CONFIG_UART_CONSOLE_ON_DEV_NAME
-//#define UART_DEVICE_NAME "UART_1"
+#if ADC_NUM_CHANNELS == 2 && !DT_SAME_NODE( \
+	DT_PHANDLE_BY_IDX(DT_PATH(zephyr_user), io_channels, 0), \
+	DT_PHANDLE_BY_IDX(DT_PATH(zephyr_user), io_channels, 1))
+#error "Channels have to use the same ADC."
+#endif
 
+#define ADC_NODE		DT_PHANDLE(DT_PATH(zephyr_user), io_channels)
 
+/* Common settings supported by most ADCs */
+#define ADC_RESOLUTION		12
+#define ADC_GAIN		ADC_GAIN_1
+#define ADC_REFERENCE		ADC_REF_INTERNAL
+#define ADC_ACQUISITION_TIME	ADC_ACQ_TIME_DEFAULT
 
-const struct device *uart_dev;
-static volatile bool data_transmitted;
-static int char_sent;
-static const char fifo_data[] = "Testing Tx.\r\n";
-static int tx_data_idx;
-static volatile bool data_transmitted;
+/* Get the numbers of up to three channels */
+static uint8_t channel_ids[ADC_NUM_CHANNELS] = {
+	DT_IO_CHANNELS_INPUT_BY_IDX(DT_PATH(zephyr_user), 0),
+#if ADC_NUM_CHANNELS == 2
+	DT_IO_CHANNELS_INPUT_BY_IDX(DT_PATH(zephyr_user), 1)
+#endif
+#if ADC_NUM_CHANNELS == 3
+	DT_IO_CHANNELS_INPUT_BY_IDX(DT_PATH(zephyr_user), 1),
+	DT_IO_CHANNELS_INPUT_BY_IDX(DT_PATH(zephyr_user), 2)
+#endif
+};
 
-#define DATA_SIZE	(sizeof(fifo_data) - 1)
+static int16_t sample_buffer[ADC_NUM_CHANNELS];
 
+struct adc_channel_cfg channel_cfg = {
+	.gain = ADC_GAIN,
+	.reference = ADC_REFERENCE,
+	.acquisition_time = ADC_ACQUISITION_TIME,
+	/* channel ID will be overwritten below */
+	.channel_id = 0,
+	.differential = 0
+};
 
-/////////////////////ADC defines////////////////////////////////////////////
+struct adc_sequence sequence = {
+	/* individual channels will be added below */
+	.channels    = 0,
+	.buffer      = sample_buffer,
+	/* buffer size in bytes, not number of samples */
+	.buffer_size = sizeof(sample_buffer),
+	.resolution  = ADC_RESOLUTION,
+};
 
-
-
-
-// Init
-void uart_init()
-{
-struct uart_config uart_cfg;
-	int ret;
-	uart_dev = device_get_binding(UART_DEVICE_NAME);
-	ret = uart_config_get(uart_dev, &uart_cfg);
-	if (!ret) {
-		printk("\n======== [%s] ========\n", UART_DEVICE_NAME);
-		printk("[%s] uart_config.baudrate=%d\n", UART_DEVICE_NAME, uart_cfg.baudrate);
-		printk("[%s] uart_config.parity=%d\n", UART_DEVICE_NAME, uart_cfg.parity);
-		printk("[%s] uart_config.stop_bits=%d\n", UART_DEVICE_NAME, uart_cfg.stop_bits);
-		printk("[%s] uart_config.data_bits=%d\n", UART_DEVICE_NAME, uart_cfg.data_bits);
-		printk("[%s] uart_config.flow_ctrl=%d\n\n\n", UART_DEVICE_NAME, uart_cfg.flow_ctrl);
-	}
-}
-
-
-
-
-static void uart_fifo_callback(const struct device *dev, void *user_data)
-{
-	
-	ARG_UNUSED(user_data);
-	if (!uart_irq_update(dev)) {
-		printk("retval should always be 1\n");
-		return;
-	}
-	
-	uart_irq_tx_enable(uart_dev);
-	if (uart_irq_tx_ready(dev) && tx_data_idx < DATA_SIZE) {
-
-		if (uart_fifo_fill(dev,
-				   (uint8_t *)&fifo_data[tx_data_idx++], 1) > 0) {
-			data_transmitted = true;
-			char_sent++;
-		}
-		
-		if (tx_data_idx == DATA_SIZE) {
-			uart_irq_tx_disable(dev);
-		}
-	}
-}
-
-// Main
 void main(void)
 {
 
-////////////////////gpio led0 init////////////////////////////
-	const struct device *dev;
-	bool led_is_on = true;
-	int ret;
+	int err;
+	const struct device *dev_adc = DEVICE_DT_GET(ADC_NODE);
 
-	dev = device_get_binding(LED0);
-	if (dev == NULL) {
+	if (!device_is_ready(dev_adc)) {
+		printk("ADC device not found\n");
 		return;
 	}
+	adc_channel_setup(dev_adc, &channel_cfg);
 
-	ret = gpio_pin_configure(dev, PIN, GPIO_OUTPUT_ACTIVE | FLAGS);
-	if (ret < 0) {
-		return;
-	}
-////////////////////gpio led0 init////////////////////////////
 
-	printk("Hello World! \n");
+	int32_t adc_vref = adc_ref_internal(dev_adc);
+	printk("ADC vref %d.\n", adc_vref);
 	
-	uart_init();
-	
-
 	while (1) {
-		gpio_pin_set(dev, PIN, (int)led_is_on);
-		led_is_on = !led_is_on;
-		k_msleep(SLEEP_TIME);
+	
 
-		char_sent = 0;
-		
-		/* Verify uart_irq_callback_set() */
-		uart_irq_callback_set(uart_dev, uart_fifo_callback);
-		
-		/* Enable Tx/Rx interrupt before using fifo */
-		/* Verify uart_irq_tx_enable() */
-		uart_irq_tx_enable(uart_dev);
-		
+		printk("ADC reading:");
+		for (uint8_t i = 0; i < ADC_NUM_CHANNELS; i++) {
+			channel_cfg.channel_id = channel_ids[i];
+			sequence.channels = BIT(channel_ids[i]);
+			err = adc_read(dev_adc, &sequence);
+			if (err != 0) {
+				printk("ADC reading failed with error %d.\n", err);
+			return;
+			}
+	
+			int16_t raw_value = sample_buffer[0];
+
+			printk(" %d", raw_value);
+			if (adc_vref > 0) {
+				/*
+				 * Convert raw reading to millivolts if driver
+				 * supports reading of ADC reference voltage
+				 */
+				int32_t mv_value = raw_value;
+
+				adc_raw_to_millivolts(adc_vref, ADC_GAIN,
+					ADC_RESOLUTION, &mv_value);
+				printk(" = %d mV  ", mv_value);
+			}
+		}
+		printk("\n");
+
 		k_sleep(K_MSEC(1000));
-		
-		tx_data_idx = 0;
-		
-		/* Verify uart_irq_tx_disable() */
-		uart_irq_tx_disable(uart_dev);
 	}
 }

@@ -1,44 +1,61 @@
-.. _blinky-sample:
+.. _adc-sample:
 
-Blinky
-######
+Analog-to-Digital Converter (ADC)
+#################################
 
 Overview
 ********
 
-Blinky is a simple application which blinks an LED forever using the :ref:`GPIO
-API <gpio_api>`. The source code shows how to configure GPIO pins as outputs,
-then turn them on and off.
+This sample demonstrates how to use the ADC driver API.
 
-See :ref:`pwm-blinky-sample` for a sample which uses the PWM API to blink an
-LED.
+Depending on the MCU type, it reads the ADC samples of one or two ADC channels
+and prints the readings to the console. If supported by the driver, the raw
+readings are converted to millivolts.
 
-.. _blinky-sample-requirements:
+The pins of the ADC channels are board-specific. Please refer to the board
+or MCU datasheet for further details.
 
-Requirements
-************
+.. note::
 
-You will see this error if you try to build Blinky for an unsupported board:
+   This sample does not work on Nordic platforms where there is a distinction
+   between channel and analog input that requires additional configuration. See
+   :zephyr_file:`samples/boards/nrf/battery` for an example of using the ADC
+   infrastructure on Nordic hardware.
 
-.. code-block:: none
-
-   Unsupported board: led0 devicetree alias is not defined
-
-The board must have an LED connected via a GPIO pin. These are called "User
-LEDs" on many of Zephyr's :ref:`boards`. The LED must be configured using the
-``led0`` :ref:`devicetree <dt-guide>` alias. This is usually done in the
-:ref:`BOARD.dts file <devicetree-in-out-files>` or a :ref:`devicetree overlay
-<set-devicetree-overlays>`.
 
 Building and Running
 ********************
 
-Build and flash Blinky as follows, changing ``reel_board`` for your board:
+The ADC peripheral and pinmux is configured in the board's ``.dts`` file. Make
+sure that the ADC is enabled (``status = "okay";``).
+
+In addition to that, this sample requires an ADC channel specified in the
+``io-channels`` property of the ``zephyr,user`` node. This is usually done with
+a devicetree overlay. The example overlay in the ``boards`` subdirectory for
+the :ref:`nucleo_l073rz_board` can be easily adjusted for other boards.
+
+Building and Running for ST Nucleo L073RZ
+=========================================
+
+The sample can be built and executed for the
+:ref:`nucleo_l073rz_board` as follows:
 
 .. zephyr-app-commands::
-   :zephyr-app: samples/basic/blinky
-   :board: reel_board
+   :zephyr-app: samples/drivers/adc
+   :board: nucleo_l073rz
    :goals: build flash
    :compact:
 
-After flashing, the LED starts to blink. Blinky does not print to the console.
+To build for another board, change "nucleo_l073rz" above to that board's name
+and provide a corresponding devicetree overlay.
+
+Sample output
+=============
+
+You should get a similar output as below, repeated every second:
+
+.. code-block:: console
+
+   ADC reading(s): 42 (raw)
+
+.. note:: If the ADC is not supported, the output will be an error message.

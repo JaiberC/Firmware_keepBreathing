@@ -1,6 +1,6 @@
-.. _fade-led-sample:
+.. _pwm-led-sample:
 
-Fade LED
+PWM LED
 ########
 
 Overview

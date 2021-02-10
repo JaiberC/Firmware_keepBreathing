@@ -13,6 +13,7 @@
 #include <console/console.h>
 #include <console/tty.h>
 #include <string.h>
+#include <stdio.h>
 
 ////////////////////blinky defines//////////////////////////
 /* 1000 msec = 1 sec */
@@ -44,9 +45,12 @@
 const struct device *uart_dev;
 static volatile bool data_transmitted;
 static int char_sent;
-static const char fifo_data[] = "Testing Tx.\r\n";
+static const char fifo_data[] = "Testing Tx....\r\n";
 static int tx_data_idx;
 static volatile bool data_transmitted;
+static volatile bool data_received; 
+char buffer_read[5];
+volatile int contador=0;
 
 #define DATA_SIZE	(sizeof(fifo_data) - 1)
 
@@ -54,6 +58,7 @@ static volatile bool data_transmitted;
 void uart_init()
 {
 struct uart_config uart_cfg;
+
 	int ret;
 	uart_dev = device_get_binding(UART_DEVICE_NAME);
 	ret = uart_config_get(uart_dev, &uart_cfg);
@@ -71,15 +76,15 @@ struct uart_config uart_cfg;
 
 
 static void uart_fifo_callback(const struct device *dev, void *user_data)
-{
-	
+{	contador++;
+	uint8_t recvData;
 	ARG_UNUSED(user_data);
 	if (!uart_irq_update(dev)) {
 		printk("retval should always be 1\n");
 		return;
 	}
 	
-	uart_irq_tx_enable(uart_dev);
+	//uart_irq_tx_enable(uart_dev);
 	if (uart_irq_tx_ready(dev) && tx_data_idx < DATA_SIZE) {
 
 		if (uart_fifo_fill(dev,
@@ -92,7 +97,27 @@ static void uart_fifo_callback(const struct device *dev, void *user_data)
 			uart_irq_tx_disable(dev);
 		}
 	}
+
+	/* Verify uart_irq_rx_ready() */
+        if (uart_irq_rx_ready(dev)) {
+                /* Verify uart_fifo_read() */
+                uart_fifo_read(dev, &recvData, 1);
+		uart_irq_rx_disable(uart_dev);
+                //printk("%c", recvData);
+		sprintf(buffer_read,"%s%c",buffer_read,recvData);
+
+                if ((recvData == '\n') || (recvData == '\r')) {
+			printk("========== %s\n",buffer_read);
+			buffer_read[0]=0;
+                }
+        }
+
+
 }
+
+
+
+
 
 // Main
 void main(void)
@@ -117,9 +142,10 @@ void main(void)
 	printk("Hello World! \n");
 	
 	uart_init();
-	
+	uart_irq_callback_set(uart_dev, uart_fifo_callback);
 
 	while (1) {
+		printk("COntador: %d\n",contador);
 		gpio_pin_set(dev, PIN, (int)led_is_on);
 		led_is_on = !led_is_on;
 		k_msleep(SLEEP_TIME);
@@ -127,11 +153,16 @@ void main(void)
 		char_sent = 0;
 		
 		/* Verify uart_irq_callback_set() */
-		uart_irq_callback_set(uart_dev, uart_fifo_callback);
+		//uart_irq_callback_set(uart_dev, uart_fifo_callback);
+		printk("Que imprima otra cosa\n");
 		
 		/* Enable Tx/Rx interrupt before using fifo */
 		/* Verify uart_irq_tx_enable() */
-		uart_irq_tx_enable(uart_dev);
+		//uart_irq_tx_enable(uart_dev);
+		
+		/* Verify uart_irq_rx_enable() */
+	        uart_irq_rx_enable(uart_dev);
+        	//while (data_received == false) {}
 		
 		k_sleep(K_MSEC(1000));
 		
@@ -139,5 +170,6 @@ void main(void)
 		
 		/* Verify uart_irq_tx_disable() */
 		uart_irq_tx_disable(uart_dev);
+
 	}
 }

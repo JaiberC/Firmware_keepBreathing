@@ -145,7 +145,7 @@ void main(void)
 	uart_irq_callback_set(uart_dev, uart_fifo_callback);
 
 	while (1) {
-		printk("COntador: %d\n",contador);
+		printk("Contador: %d\n",contador);
 		gpio_pin_set(dev, PIN, (int)led_is_on);
 		led_is_on = !led_is_on;
 		k_msleep(SLEEP_TIME);
@@ -154,7 +154,7 @@ void main(void)
 		
 		/* Verify uart_irq_callback_set() */
 		//uart_irq_callback_set(uart_dev, uart_fifo_callback);
-		printk("Que imprima otra cosa\n");
+		//printk("Que imprima otra cosa\n");
 		
 		/* Enable Tx/Rx interrupt before using fifo */
 		/* Verify uart_irq_tx_enable() */

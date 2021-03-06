@@ -4,7 +4,9 @@ Para conectarse a la Raspi:
   Se ingresa contraseña
   
 Para copiar archivos a la Raspi:
+
   scp -P 5300 mi_archivo.txt pi@IP:directorio/nuevo_nombre.txt
+  
   mi_archivo.txt corresponde al archivo original que se quiere copiar
   directorio es la ruta donde se desea copiar, en el dispositivo de destino
   nuevo_nombre.txt el nombre con el que se desea guardar en el dispositivo de destino
@@ -12,7 +14,7 @@ Para copiar archivos a la Raspi:
 Para programar la Raspi:
   
   cd stm32f4/
-  sudo ./my_script_programming.sh
+  sudo ./script_programming.sh
   
 Para entrar al minicom
   

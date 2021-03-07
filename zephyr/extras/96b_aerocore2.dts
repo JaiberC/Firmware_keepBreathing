@@ -33,6 +33,16 @@
 		};
 	};
 
+	mypwm {
+		compatible = "pwm-leds";
+		pwm_motor: pwm_motor {
+			pwms = <&pwm4 1 0 PWM_POLARITY_NORMAL>;
+		};
+		pwm_motor_3: pwm_motor_3 {
+			pwms = <&pwm4 4 0 PWM_POLARITY_NORMAL>;
+		};
+	};
+
 	encoders {
 		compatible = "gpio-keys";
 		encoder0: enc_0{
@@ -43,21 +53,29 @@
 			gpios = <&gpiod 11 GPIO_ACTIVE_HIGH>;
 			label = "User btn 1";
 		};
+
 	};
 
-	
-
-	mypwm {
-		compatible = "pwm-leds";
-		pwm_motor: pwm_motor {
-			pwms = <&pwm4 1 0 PWM_POLARITY_NORMAL>;
+	mypins {
+		compatible = "gpio-keys";
+		dirA: button_A{
+			gpios = <&gpioc 6 GPIO_ACTIVE_HIGH>;
+			label = "PinDir 0";
 		};
-		pwm_motor_3: pwm_motor_3 {
-			pwms = <&pwm4 3 0 PWM_POLARITY_NORMAL>;
+		dirB: button_B{
+			gpios = <&gpiod 14 GPIO_ACTIVE_HIGH>;
+			label = "PinDir 1";
+		};
+		en: en_pin{
+			gpios = <&gpioa 8 GPIO_ACTIVE_HIGH>;
+			label = "Enable Motor 1";
 		};
 	};
 
 	aliases {
+		ina = &dirA;
+		inb = &dirB;
+		enmot = &en;
 		led0 = &yellow_led_1;
 		led1 = &blue_led_2;
 		pwm-motor = &pwm_motor;

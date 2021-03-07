@@ -1,4 +1,4 @@
-/*
+//*
  * Copyright (c) 2016 Intel Corporation
  *
  * SPDX-License-Identifier: Apache-2.0
@@ -10,6 +10,7 @@
 #include <device.h>
 #include <drivers/gpio.h>
 #include <drivers/uart.h>
+#include <drivers/pwm.h>
 #include <console/console.h>
 #include <console/tty.h>
 #include <string.h>
@@ -365,7 +366,7 @@ void motor_run(int dutycycle){
 
 	//pulse_width= 50*dutycycle/100;
 	pulse_width= (uint32_t) 25U;
-	ret = pwm_pin_set_usec(pwm, period_usec, pulse_width, PWM_FLAGS);
+	ret = pwm_pin_set_usec(pwm, PWM_CHANNEL, period_usec, pulse_width, PWM_FLAGS);
 
 	if (ret) {
 		printk("Error %d: failed to set pulse width\n", ret);
@@ -502,3 +503,4 @@ void main(void)
 		uart_irq_tx_disable(uart_dev);
 	}
 }
+

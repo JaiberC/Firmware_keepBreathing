@@ -13,6 +13,7 @@
 #include <console/console.h>
 #include <console/tty.h>
 #include <string.h>
+#include <stdio.h>
 
 ////////////////////blinky defines//////////////////////////
 /* 1000 msec = 1 sec */
@@ -49,6 +50,7 @@ static int tx_data_idx;
 static volatile bool data_transmitted;
 
 #define DATA_SIZE	(sizeof(fifo_data) - 1)
+char buffer_read[5];
 
 ///////////////////// Timer defines ////////////////////////////////////////////
 
@@ -88,7 +90,7 @@ int pulses = 0;     // Cantidad de pulsos acumulados del encoder
 
 #define SW1_NODE	DT_ALIAS(ch1) // Declaraciones del canal B del encoder
 
-#if DT_NODE_HAS_STATUS(SW0_NODE, okay)
+#if DT_NODE_HAS_STATUS(SW1_NODE, okay)
 #define SW1_GPIO_LABEL	DT_GPIO_LABEL(SW1_NODE, gpios)
 #define SW1_GPIO_PIN	DT_GPIO_PIN(SW1_NODE, gpios)
 #define SW1_GPIO_FLAGS	(GPIO_INPUT | DT_GPIO_FLAGS(SW1_NODE, gpios))
@@ -131,11 +133,11 @@ uint16_t b_values;
 #define PWM_FLAGS	0
 #endif
 
-#define PERIOD_USEC 40U
+
 
 #define MPOS_NODE	DT_ALIAS(ina) // Dirección positiva del motor
 
-#if DT_NODE_HAS_STATUS(INA_NODE, okay)
+#if DT_NODE_HAS_STATUS(MPOS_NODE, okay)
 #define MPOS_GPIO_LABEL	DT_GPIO_LABEL(MPOS_NODE, gpios)
 #define MPOS_GPIO_PIN	DT_GPIO_PIN(MPOS_NODE, gpios)
 #define MPOS_GPIO_FLAGS	(GPIO_INPUT | DT_GPIO_FLAGS(MPOS_NODE, gpios))
@@ -148,7 +150,7 @@ uint16_t b_values;
 
 #define MNEG_NODE	DT_ALIAS(inb) // Dirección negativa del motor
 
-#if DT_NODE_HAS_STATUS(INA_NODE, okay)
+#if DT_NODE_HAS_STATUS(MNEG_NODE, okay)
 #define MNEG_GPIO_LABEL	DT_GPIO_LABEL(MNEG_NODE, gpios)
 #define MNEG_GPIO_PIN	DT_GPIO_PIN(MNEG_NODE, gpios)
 #define MNEG_GPIO_FLAGS	(GPIO_INPUT | DT_GPIO_FLAGS(MNEG_NODE, gpios))
@@ -161,7 +163,7 @@ uint16_t b_values;
 
 #define ENMOT_NODE	DT_ALIAS(enmot) // Dirección negativa del motor
 
-#if DT_NODE_HAS_STATUS(INA_NODE, okay)
+#if DT_NODE_HAS_STATUS(ENMOT_NODE, okay)
 #define ENMOT_GPIO_LABEL	DT_GPIO_LABEL(ENMOT_NODE, gpios)
 #define ENMOT_GPIO_PIN	DT_GPIO_PIN(ENMOT_NODE, gpios)
 #define ENMOT_GPIO_FLAGS	(GPIO_INPUT | DT_GPIO_FLAGS(ENMOT_NODE, gpios))
@@ -172,9 +174,15 @@ uint16_t b_values;
 #define ENMOT_GPIO_FLAGS	0
 #endif
 
-const struct device *motPos, *motNeg, *motEn;
+const struct device *motPos, *motNeg, *motEn, *pwm;
 uint32_t pulse_width = 0U;
+uint32_t period_usec = 50;
 extern void configure_motor();
+extern void motor_run();
+extern void position_control();
+int position_ref=10000;
+float kp = 1;
+float u = 0;
 
 // Init
 void uart_init()
@@ -202,14 +210,14 @@ struct uart_config uart_cfg;
 
 static void uart_fifo_callback(const struct device *dev, void *user_data)
 {
-	
+	uint8_t recvData;
 	ARG_UNUSED(user_data);
 	if (!uart_irq_update(dev)) {
 		printk("retval should always be 1\n");
 		return;
 	}
 	
-	uart_irq_tx_enable(uart_dev);
+	//uart_irq_tx_enable(uart_dev);
 	if (uart_irq_tx_ready(dev) && tx_data_idx < DATA_SIZE) {
 
 		if (uart_fifo_fill(dev,
@@ -222,6 +230,21 @@ static void uart_fifo_callback(const struct device *dev, void *user_data)
 			uart_irq_tx_disable(dev);
 		}
 	}
+
+	/* Verify uart_irq_rx_ready() */
+        if (uart_irq_rx_ready(dev)) {
+                /* Verify uart_fifo_read() */
+                uart_fifo_read(dev, &recvData, 1);
+		uart_irq_rx_disable(uart_dev);
+                //printk("%c", recvData);
+		sprintf(buffer_read,"%s%c",buffer_read,recvData);
+
+                if ((recvData == '\n') || (recvData == '\r')) {
+			printk("========== %s\n",buffer_read);
+			buffer_read[0]=0;
+                }
+        }
+
 }
 
 // Funciones para la interrupción por tiempo
@@ -238,6 +261,7 @@ void my_work_handler(struct k_work *work) // Función de interrupción por tiemp
 	cycles_spent = stop_time - start_time;
 	nanoseconds_spent = cycles_spent/168000;
 	start_time = k_cycle_get_32();
+	position_control();
 
 }
 
@@ -278,6 +302,15 @@ void decode_encoder(){
 }
 
 void configure_motor(){
+	int ret;
+
+	pwm = device_get_binding(PWM_LABEL);
+	if (!pwm) {
+		printk("Error: didn't find %s device\n", PWM_LABEL);
+		return;
+	}
+
+
 	motPos = device_get_binding(MPOS_GPIO_LABEL);
 	if (motPos == NULL) {
 		printk("Error: didn't find %s device\n", MPOS_GPIO_LABEL);
@@ -319,6 +352,7 @@ void configure_motor(){
 }
 
 void motor_run(int dutycycle){
+	int ret;
 	if (dutycycle <0){
 		dutycycle= dutycycle*(-1);
 		gpio_pin_set(motNeg, MNEG_GPIO_PIN, 1);
@@ -329,13 +363,21 @@ void motor_run(int dutycycle){
 		gpio_pin_set(motPos, MPOS_GPIO_PIN, 0);
 	}
 
-	pulse_width= (uint32_t) PERIOD_USEC*dutycycle/100;
-	ret = pwm_pin_set_usec(pwm, PWM_CHANNEL, PERIOD_USEC,
-			       pulse_width, PWM_FLAGS);
+	//pulse_width= 50*dutycycle/100;
+	pulse_width= (uint32_t) 25U;
+	ret = pwm_pin_set_usec(pwm, period_usec, pulse_width, PWM_FLAGS);
+
 	if (ret) {
 		printk("Error %d: failed to set pulse width\n", ret);
 		return;
 	}
+}
+
+void position_control(){
+	float error;
+	error = position_ref-pulses;
+	u = kp*error;
+	motor_run(u);
 }
 
 // Main
@@ -426,6 +468,9 @@ void main(void)
 	start_time = k_cycle_get_32();		// Captura del número de ciclos de reloj actuales
 	k_timer_init(&my_timer, my_expiry_function, NULL);
 	k_timer_start(&my_timer, K_MSEC(sample_time), K_MSEC(sample_time));
+
+/////////////////// Motor init //////////////////////////////
+	configure_motor();
 
 ///////////////// While infinito ///////////////////////////	
 

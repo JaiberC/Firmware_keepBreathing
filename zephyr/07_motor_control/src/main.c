@@ -2,7 +2,7 @@
  * Copyright (c) 2016 Intel Corporation
  *
  * SPDX-License-Identifier: Apache-2.0
-*/
+ */
 
 #include <zephyr.h>
 #include <sys/printk.h>
@@ -15,6 +15,8 @@
 #include <console/tty.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
 
 ////////////////////blinky defines//////////////////////////
 /* 1000 msec = 1 sec */
@@ -64,7 +66,7 @@ u32_t start_time;
 u32_t stop_time;
 u32_t cycles_spent;
 u32_t nanoseconds_spent=1;
-int sample_time = 500; // milisecs
+int sample_time = 10; // milisecs
 
 ////////////////// Encoder Defines ///////////////////////////////////////////
 #define CHA_PIN 9
@@ -135,8 +137,7 @@ uint16_t b_values;
 #endif
 
 
-
-#define MPOS_NODE	DT_ALIAS(ina) // Dirección positiva del motor
+#define MPOS_NODE	DT_ALIAS(inb) // Dirección positiva del motor: Canal INA del encoder
 
 #if DT_NODE_HAS_STATUS(MPOS_NODE, okay)
 #define MPOS_GPIO_LABEL	DT_GPIO_LABEL(MPOS_NODE, gpios)
@@ -149,7 +150,7 @@ uint16_t b_values;
 #define MPOS_GPIO_FLAGS	0
 #endif
 
-#define MNEG_NODE	DT_ALIAS(inb) // Dirección negativa del motor
+#define MNEG_NODE	DT_ALIAS(ina) // Dirección negativa del motor: Canal INB del encoder
 
 #if DT_NODE_HAS_STATUS(MNEG_NODE, okay)
 #define MNEG_GPIO_LABEL	DT_GPIO_LABEL(MNEG_NODE, gpios)
@@ -162,7 +163,7 @@ uint16_t b_values;
 #define MNEG_GPIO_FLAGS	0
 #endif
 
-#define ENMOT_NODE	DT_ALIAS(enmot) // Dirección negativa del motor
+#define ENMOT_NODE	DT_ALIAS(enmot) // Pin para habilitar el motor
 
 #if DT_NODE_HAS_STATUS(ENMOT_NODE, okay)
 #define ENMOT_GPIO_LABEL	DT_GPIO_LABEL(ENMOT_NODE, gpios)
@@ -175,15 +176,30 @@ uint16_t b_values;
 #define ENMOT_GPIO_FLAGS	0
 #endif
 
-const struct device *motPos, *motNeg, *motEn, *pwm;
-uint32_t pulse_width = 0U;
-uint32_t period_usec = 50;
+const struct device *motPos, *motNeg, *motEn, *pwm, *pwmtester;
+uint32_t volatile pulse_width = 0U;
+uint32_t period_usec = 125U;
 extern void configure_motor();
-extern void motor_run();
+extern void motor_run(float);
 extern void position_control();
-int position_ref=10000;
-float kp = 1;
-float u = 0;
+int position_ref=10000;			// Referencia de posición deseada
+float kp = 0.01;					// Ganancia proporcional
+float u = 0;					// Señal de control
+float error= 0;
+
+// BORRAR
+#define TEST_NODE	DT_ALIAS(pwmtest) // Pin para habilitar el motor
+
+#if DT_NODE_HAS_STATUS(TEST_NODE, okay)
+#define TEST_GPIO_LABEL	DT_GPIO_LABEL(TEST_NODE, gpios)
+#define TEST_GPIO_PIN	DT_GPIO_PIN(TEST_NODE, gpios)
+#define TEST_GPIO_FLAGS	(GPIO_INPUT | DT_GPIO_FLAGS(TEST_NODE, gpios))
+#else
+#error "Unsupported board: TEST devicetree alias is not defined"
+#define TEST_GPIO_LABEL	""
+#define TEST_GPIO_PIN	0
+#define TEST_GPIO_FLAGS	0
+#endif
 
 // Init
 void uart_init()
@@ -206,9 +222,6 @@ struct uart_config uart_cfg;
 	
 }
 
-
-
-
 static void uart_fifo_callback(const struct device *dev, void *user_data)
 {
 	uint8_t recvData;
@@ -219,6 +232,7 @@ static void uart_fifo_callback(const struct device *dev, void *user_data)
 	}
 	
 	//uart_irq_tx_enable(uart_dev);
+	uart_irq_tx_disable(dev);
 	if (uart_irq_tx_ready(dev) && tx_data_idx < DATA_SIZE) {
 
 		if (uart_fifo_fill(dev,
@@ -302,6 +316,7 @@ void decode_encoder(){
           else pulses++;     } 
 }
 
+// Función para inicializar el movimiento del motor
 void configure_motor(){
 	int ret;
 
@@ -350,34 +365,62 @@ void configure_motor(){
 
 	// Habilitar el pin del enable del driver
 	gpio_pin_set(motEn,ENMOT_GPIO_PIN,1);
+
+	pwmtester = device_get_binding(TEST_GPIO_LABEL);
+	if (pwmtester == NULL) {
+		printk("Error: didn't find %s device\n", TEST_GPIO_LABEL);
+		return;
+	}
+	/*
+	ret = gpio_pin_configure(pwmtester, TEST_GPIO_PIN, GPIO_OUTPUT_ACTIVE | TEST_GPIO_FLAGS);
+	if (ret != 0) {
+		printk("Error %d: failed to configure %s pin %d\n",
+		       ret, TEST_GPIO_LABEL, TEST_GPIO_PIN);
+		return;
+	}
+	*/
 }
 
-void motor_run(int dutycycle){
+// Función para enviar PWM al driver
+void motor_run(float dutycycle){
 	int ret;
+
 	if (dutycycle <0){
 		dutycycle= dutycycle*(-1);
 		gpio_pin_set(motNeg, MNEG_GPIO_PIN, 1);
 		gpio_pin_set(motPos, MPOS_GPIO_PIN, 0);
 	}
 	else{
-		gpio_pin_set(motNeg, MNEG_GPIO_PIN, 1);
-		gpio_pin_set(motPos, MPOS_GPIO_PIN, 0);
+		gpio_pin_set(motNeg, MNEG_GPIO_PIN, 0);
+		gpio_pin_set(motPos, MPOS_GPIO_PIN, 1);
 	}
 
-	//pulse_width= 50*dutycycle/100;
-	pulse_width= (uint32_t) 25U;
-	ret = pwm_pin_set_usec(pwm, PWM_CHANNEL, period_usec, pulse_width, PWM_FLAGS);
+	if (dutycycle>100){	
+		dutycycle=100;
+	}
+	if (dutycycle<15){
+		dutycycle=0;
+	}
 
+	pulse_width= (uint32_t) dutycycle*period_usec/100;
+	ret = pwm_pin_set_usec(pwm, PWM_CHANNEL, period_usec, pulse_width, PWM_FLAGS);
 	if (ret) {
-		printk("Error %d: failed to set pulse width\n", ret);
+		printk("Error %d: failed to set pulse width %d\n", pulse_width + ret);
 		return;
 	}
 }
 
+// Control de posición del motor
 void position_control(){
-	float error;
+	
 	error = position_ref-pulses;
 	u = kp*error;
+
+	if (abs(error)<10){
+		gpio_pin_set(motEn,ENMOT_GPIO_PIN,0);
+	}
+	
+
 	motor_run(u);
 }
 
@@ -472,6 +515,7 @@ void main(void)
 
 /////////////////// Motor init //////////////////////////////
 	configure_motor();
+	//gpio_pin_set_raw(pwmtester,TEST_GPIO_PIN,0);
 
 ///////////////// While infinito ///////////////////////////	
 
@@ -484,7 +528,7 @@ void main(void)
 		//printk("%d\n",nanoseconds_spent);
 		
 
-		printk("Count %d Pin %d \n ", pulses, test);
+		printk("C %d U %d E %d P %d \n", pulses, (int) u, (int) error, pulse_width);
 		
 		char_sent = 0;
 		
@@ -494,13 +538,14 @@ void main(void)
 		/* Enable Tx/Rx interrupt before using fifo */
 		/* Verify uart_irq_tx_enable() */
 		uart_irq_tx_enable(uart_dev);
-		
-		k_sleep(K_MSEC(1000));
-		
+				
 		tx_data_idx = 0;
 		
 		/* Verify uart_irq_tx_disable() */
 		uart_irq_tx_disable(uart_dev);
+
+		// 
+		//gpio_pin_set_raw(pwmtester,TEST_GPIO_PIN,0);	
+		
 	}
 }
-

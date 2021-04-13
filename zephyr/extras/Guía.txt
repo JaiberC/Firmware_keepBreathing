@@ -24,3 +24,8 @@ Para salir del minicom
 
   ctrl+A Z X
   
+Para encontrar los dtsi del micro:
+  zephyrpoject/zephyr/dts/arm/st/f4
+  - stm32f4.dtsi
+  - stm32f407.dtsi
+  - stm32f427.dtsi

@@ -15,8 +15,8 @@
 
 #define ADC_NUM_CHANNELS	DT_PROP_LEN(DT_PATH(zephyr_user), io_channels)
 
-#if ADC_NUM_CHANNELS > 3
-#error "Currently only 1 2 or 3 channels supported in this sample"
+#if ADC_NUM_CHANNELS > 9
+#error "Currently only up to 9 channels supported in this sample"
 #endif
 
 #if ADC_NUM_CHANNELS == 2 && !DT_SAME_NODE( \
@@ -42,6 +42,26 @@ static uint8_t channel_ids[ADC_NUM_CHANNELS] = {
 #if ADC_NUM_CHANNELS == 3
 	DT_IO_CHANNELS_INPUT_BY_IDX(DT_PATH(zephyr_user), 1),
 	DT_IO_CHANNELS_INPUT_BY_IDX(DT_PATH(zephyr_user), 2)
+#endif
+
+#if ADC_NUM_CHANNELS == 8
+	DT_IO_CHANNELS_INPUT_BY_IDX(DT_PATH(zephyr_user), 1),
+	DT_IO_CHANNELS_INPUT_BY_IDX(DT_PATH(zephyr_user), 2),
+	DT_IO_CHANNELS_INPUT_BY_IDX(DT_PATH(zephyr_user), 3),
+	DT_IO_CHANNELS_INPUT_BY_IDX(DT_PATH(zephyr_user), 4),
+	DT_IO_CHANNELS_INPUT_BY_IDX(DT_PATH(zephyr_user), 5),
+	DT_IO_CHANNELS_INPUT_BY_IDX(DT_PATH(zephyr_user), 6),
+	DT_IO_CHANNELS_INPUT_BY_IDX(DT_PATH(zephyr_user), 7)
+#endif
+#if ADC_NUM_CHANNELS == 9
+	DT_IO_CHANNELS_INPUT_BY_IDX(DT_PATH(zephyr_user), 1),
+	DT_IO_CHANNELS_INPUT_BY_IDX(DT_PATH(zephyr_user), 2),
+	DT_IO_CHANNELS_INPUT_BY_IDX(DT_PATH(zephyr_user), 3),
+	DT_IO_CHANNELS_INPUT_BY_IDX(DT_PATH(zephyr_user), 4),
+	DT_IO_CHANNELS_INPUT_BY_IDX(DT_PATH(zephyr_user), 5),
+	DT_IO_CHANNELS_INPUT_BY_IDX(DT_PATH(zephyr_user), 6),
+	DT_IO_CHANNELS_INPUT_BY_IDX(DT_PATH(zephyr_user), 7),
+	DT_IO_CHANNELS_INPUT_BY_IDX(DT_PATH(zephyr_user), 8)
 #endif
 };
 

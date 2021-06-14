@@ -181,8 +181,14 @@
 };
 
 &adc1 {
-	pinctrl-0 = <&adc1_in10_pc0 &adc1_in11_pc1
-		     &adc1_in12_pc2 &adc1_in13_pc3>;
+	pinctrl-0 = <&adc1_in0_pa0
+	  			 &adc1_in1_pa1
+			     &adc1_in2_pa2
+			     &adc1_in3_pa3
+			     &adc1_in4_pa4
+			     &adc1_in5_pa5
+			     &adc1_in6_pa6
+			     &adc1_in7_pa7>;
 	status = "okay";
 };
 

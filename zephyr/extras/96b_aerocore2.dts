@@ -188,7 +188,8 @@
 			     &adc1_in4_pa4
 			     &adc1_in5_pa5
 			     &adc1_in6_pa6
-			     &adc1_in7_pa7>;
+			     &adc1_in7_pa7
+			     &adc1_in8_pb0>;
 	status = "okay";
 };
 

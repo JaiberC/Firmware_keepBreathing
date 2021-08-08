@@ -41,6 +41,12 @@
 		pwm_motor_3: pwm_motor_3 {
 			pwms = <&pwm4 4 0 PWM_POLARITY_NORMAL>;
 		};
+		pwm_valve_1: pwm_valve_1 {
+			pwms = <&pwm1 1 0 PWM_POLARITY_NORMAL>;
+		};
+		pwm_valve_2: pwm_valve_2 {
+			pwms = <&pwm1 2 0 PWM_POLARITY_NORMAL>;
+		};
 	};
 
 	encoders {
@@ -82,6 +88,8 @@
 		pwm-motor3 = &pwm_motor_3;
 		ch0 = &encoder0;
 		ch1 = &encoder1;
+		pwm-valve-1 = &pwm_valve_1;
+		pwm-valve-2 = &pwm_valve_2;
 	};
 
 };
@@ -137,13 +145,13 @@
 	status = "okay";
 };
 
-&spi4_nss_pe11 { slew-rate = "very-high-speed"; };
+//&spi4_nss_pe11 { slew-rate = "very-high-speed"; };
 
-&spi4 {
-	pinctrl-0 = <&spi4_nss_pe11 &spi4_sck_pe12
-		     &spi4_miso_pe13 &spi4_mosi_pe14>;
-	status = "okay";
-};
+//&spi4 {
+//	pinctrl-0 = <&spi4_nss_pe11 &spi4_sck_pe12
+//		     &spi4_miso_pe13 &spi4_mosi_pe14>;
+//	status = "okay";
+//};
 
 &i2c2 {
 	pinctrl-0 = <&i2c2_scl_pb10 &i2c2_sda_pb11>;
@@ -154,6 +162,16 @@
 &usbotg_fs {
 	pinctrl-0 = <&usb_otg_fs_dm_pa11 &usb_otg_fs_dp_pa12>;
 	status = "okay";
+};
+
+&timers1 {
+	status = "okay";
+
+	pwm1: pwm {
+		status = "okay";
+		pinctrl-0 = <&tim1_ch1_pe9
+			     &tim1_ch2_pe11>;
+	};
 };
 
 &timers4 {
@@ -196,4 +214,3 @@
 &rng {
 	status = "okay";
 };
-

@@ -17,6 +17,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <drivers/adc.h>
 
 ////////////////////blinky defines//////////////////////////
 /* 1000 msec = 1 sec */
@@ -124,7 +125,6 @@ uint16_t b_values;
 // Variables para el PWM
 
 #define PWM_MOTOR_NODE	DT_ALIAS(pwm_motor)
-
 #if DT_NODE_HAS_STATUS(PWM_MOTOR_NODE, okay)
 #define PWM_LABEL	DT_PWMS_LABEL(PWM_MOTOR_NODE)
 #define PWM_CHANNEL	DT_PWMS_CHANNEL(PWM_MOTOR_NODE)
@@ -135,6 +135,43 @@ uint16_t b_values;
 #define PWM_CHANNEL	0
 #define PWM_FLAGS	0
 #endif
+
+#define PWM_VALVE1_NODE	DT_ALIAS(pwm_valve_air)
+#if DT_NODE_HAS_STATUS(PWM_VALVE1_NODE, okay)
+#define PWM_VALVE1_LABEL	DT_PWMS_LABEL(PWM_VALVE1_NODE)
+#define PWM_VALVE1_CHANNEL	DT_PWMS_CHANNEL(PWM_VALVE1_NODE)
+#define PWM_VALVE1_FLAGS	DT_PWMS_FLAGS(PWM_VALVE1_NODE)
+#else
+#error "Unsupported board: pwm-valve-1 devicetree alias is not defined"
+#define PWM_VALVE1_LABEL	""
+#define PWM_VALVE1_CHANNEL	0
+#define PWM_VALVE1_FLAGS	0
+#endif
+
+#define PWM_VALVE2_NODE	DT_ALIAS(pwm_valve_oxy)
+#if DT_NODE_HAS_STATUS(PWM_VALVE2_NODE, okay)
+#define PWM_VALVE2_LABEL	DT_PWMS_LABEL(PWM_VALVE2_NODE)
+#define PWM_VALVE2_CHANNEL	DT_PWMS_CHANNEL(PWM_VALVE2_NODE)
+#define PWM_VALVE2_FLAGS	DT_PWMS_FLAGS(PWM_VALVE2_NODE)
+#else
+#error "Unsupported board: pwm-valve-2 devicetree alias is not defined"
+#define PWM_VALVE2_LABEL	""
+#define PWM_VALVE2_CHANNEL	0
+#define PWM_VALVE2_FLAGS	0
+#endif
+
+#define PWM_VALVE3_NODE	DT_ALIAS(pwm_valve_out)
+#if DT_NODE_HAS_STATUS(PWM_VALVE3_NODE, okay)
+#define PWM_VALVE3_LABEL	DT_PWMS_LABEL(PWM_VALVE3_NODE)
+#define PWM_VALVE3_CHANNEL	DT_PWMS_CHANNEL(PWM_VALVE3_NODE)
+#define PWM_VALVE3_FLAGS	DT_PWMS_FLAGS(PWM_VALVE3_NODE)
+#else
+#error "Unsupported board: pwm-valve-3 devicetree alias is not defined"
+#define PWM_VALVE3_LABEL	""
+#define PWM_VALVE3_CHANNEL	0
+#define PWM_VALVE3_FLAGS	0
+#endif
+
 
 
 #define MPOS_NODE	DT_ALIAS(inb) // Dirección positiva del motor: Canal INA del encoder
@@ -176,10 +213,83 @@ uint16_t b_values;
 #define ENMOT_GPIO_FLAGS	0
 #endif
 
+////////////////// ADC Defines ///////////////////////////////////
+
+#define ADC_NUM_CHANNELS	DT_PROP_LEN(DT_PATH(zephyr_user), io_channels)
+
+
+#if ADC_NUM_CHANNELS == 2 && !DT_SAME_NODE( \
+	DT_PHANDLE_BY_IDX(DT_PATH(zephyr_user), io_channels, 0), \
+	DT_PHANDLE_BY_IDX(DT_PATH(zephyr_user), io_channels, 1))
+#error "Channels have to use the same ADC."
+#endif
+
+#define ADC_NODE		DT_PHANDLE(DT_PATH(zephyr_user), io_channels)
+
+/* Common settings supported by most ADCs */
+#define ADC_RESOLUTION		12
+#define ADC_GAIN		ADC_GAIN_1
+#define ADC_REFERENCE		ADC_REF_INTERNAL
+#define ADC_ACQUISITION_TIME	ADC_ACQ_TIME_DEFAULT
+
+/* Get the numbers of up to three channels */
+static uint8_t channel_ids[ADC_NUM_CHANNELS] = {
+	DT_IO_CHANNELS_INPUT_BY_IDX(DT_PATH(zephyr_user), 0),
+#if ADC_NUM_CHANNELS == 2
+	DT_IO_CHANNELS_INPUT_BY_IDX(DT_PATH(zephyr_user), 1)
+#endif
+#if ADC_NUM_CHANNELS == 3
+	DT_IO_CHANNELS_INPUT_BY_IDX(DT_PATH(zephyr_user), 1),
+	DT_IO_CHANNELS_INPUT_BY_IDX(DT_PATH(zephyr_user), 2)
+#endif
+
+#if ADC_NUM_CHANNELS == 8
+	DT_IO_CHANNELS_INPUT_BY_IDX(DT_PATH(zephyr_user), 1),
+	DT_IO_CHANNELS_INPUT_BY_IDX(DT_PATH(zephyr_user), 2),
+	DT_IO_CHANNELS_INPUT_BY_IDX(DT_PATH(zephyr_user), 3),
+	DT_IO_CHANNELS_INPUT_BY_IDX(DT_PATH(zephyr_user), 4),
+	DT_IO_CHANNELS_INPUT_BY_IDX(DT_PATH(zephyr_user), 5),
+	DT_IO_CHANNELS_INPUT_BY_IDX(DT_PATH(zephyr_user), 6),
+	DT_IO_CHANNELS_INPUT_BY_IDX(DT_PATH(zephyr_user), 7)
+#endif
+#if ADC_NUM_CHANNELS == 9
+	DT_IO_CHANNELS_INPUT_BY_IDX(DT_PATH(zephyr_user), 1),
+	DT_IO_CHANNELS_INPUT_BY_IDX(DT_PATH(zephyr_user), 2),
+	DT_IO_CHANNELS_INPUT_BY_IDX(DT_PATH(zephyr_user), 3),
+	DT_IO_CHANNELS_INPUT_BY_IDX(DT_PATH(zephyr_user), 4),
+	DT_IO_CHANNELS_INPUT_BY_IDX(DT_PATH(zephyr_user), 5),
+	DT_IO_CHANNELS_INPUT_BY_IDX(DT_PATH(zephyr_user), 6),
+	DT_IO_CHANNELS_INPUT_BY_IDX(DT_PATH(zephyr_user), 7),
+	DT_IO_CHANNELS_INPUT_BY_IDX(DT_PATH(zephyr_user), 8)
+#endif
+};
+
+static int16_t sample_buffer[ADC_NUM_CHANNELS];
+const struct device *dev_adc;
+
+struct adc_channel_cfg channel_cfg = {
+	.gain = ADC_GAIN,
+	.reference = ADC_REFERENCE,
+	.acquisition_time = ADC_ACQUISITION_TIME,
+	/* channel ID will be overwritten below */
+	.channel_id = 0,
+	.differential = 0
+};
+
+struct adc_sequence sequence = {
+	/* individual channels will be added below */
+	.channels    = 0,
+	.buffer      = sample_buffer,
+	/* buffer size in bytes, not number of samples */
+	.buffer_size = sizeof(sample_buffer),
+	.resolution  = ADC_RESOLUTION,
+};
+
+///////////////////////////
+
 const struct device *motPos, *motNeg, *motEn, *pwm, *pwmtester;
 uint32_t volatile pulse_width = 0U;
-uint32_t period_usec = 750U;
-uint32_t period_nsec = 250000U;
+uint32_t period_usec = 100000U;
 extern void configure_motor();
 extern void motor_run(float);
 extern void position_control();
@@ -190,43 +300,15 @@ float u = 0;					// Señal de control
 float error= 0;
 float old_error =0;
 
-#define SV1_NODE	DT_ALIAS(sftyvalve1) // Pin para habilitar el motor
 
-#if DT_NODE_HAS_STATUS(SV1_NODE, okay)
-#define SV1_GPIO_LABEL	DT_GPIO_LABEL(SV1_NODE, gpios)
-#define SV1_GPIO_PIN	DT_GPIO_PIN(SV1_NODE, gpios)
-#define SV1_GPIO_FLAGS	(GPIO_INPUT | DT_GPIO_FLAGS(SV1_NODE, gpios))
-#else
-#error "Unsupported board: TEST devicetree alias is not defined"
-#define SV1_GPIO_LABEL	""
-#define SV1_GPIO_PIN	0
-#define SV1_GPIO_FLAGS	0
-#endif
-
-const struct device *safety_valve1;
-bool sv1_is_on = false;
-
-// BORRAR
-#define TEST_NODE	DT_ALIAS(pwmtest) // Pin para habilitar el motor
-
-#if DT_NODE_HAS_STATUS(TEST_NODE, okay)
-#define TEST_GPIO_LABEL	DT_GPIO_LABEL(TEST_NODE, gpios)
-#define TEST_GPIO_PIN	DT_GPIO_PIN(TEST_NODE, gpios)
-#define TEST_GPIO_FLAGS	(GPIO_INPUT | DT_GPIO_FLAGS(TEST_NODE, gpios))
-#else
-#error "Unsupported board: TEST devicetree alias is not defined"
-#define TEST_GPIO_LABEL	""
-#define TEST_GPIO_PIN	0
-#define TEST_GPIO_FLAGS	0
-#endif
-
-const struct device *dev;
-bool led_is_on = true;
+// Variables para las válvulas
+const struct device *valve_air, *valve_oxy, *valve_out;
+uint32_t period_valve_usec = 2272U;           // 440 Hz
+extern void configure_valves();
 
 // Init
-void uart_init()
-{
-struct uart_config uart_cfg;
+void uart_init(){
+	struct uart_config uart_cfg;
 	int ret;
 	uart_dev = device_get_binding(UART_DEVICE_NAME);
 	ret = uart_config_get(uart_dev, &uart_cfg);
@@ -244,8 +326,7 @@ struct uart_config uart_cfg;
 	
 }
 
-static void uart_fifo_callback(const struct device *dev, void *user_data)
-{
+static void uart_fifo_callback(const struct device *dev, void *user_data) {
 	uint8_t recvData;
 	ARG_UNUSED(user_data);
 	if (!uart_irq_update(dev)) {
@@ -298,10 +379,10 @@ void my_work_handler(struct k_work *work) // Función de interrupción por tiemp
 	cycles_spent = stop_time - start_time;
 	nanoseconds_spent = cycles_spent/168000;
 	start_time = k_cycle_get_32();
-	position_control();
-	gpio_pin_set(dev, PIN, (int)led_is_on);
-	led_is_on = !led_is_on;
-
+	
+	//!!!!!!!!!!!!!!!!!!!!!!
+	//position_control();
+	// !!!!!!!!!!!!!!!!!!!!!
 }
 
 // Funciones para la interrupción por encoder
@@ -390,11 +471,6 @@ void configure_motor(){
 	// Habilitar el pin del enable del driver
 	gpio_pin_set(motEn,ENMOT_GPIO_PIN,1);
 
-	pwmtester = device_get_binding(TEST_GPIO_LABEL);
-	if (pwmtester == NULL) {
-		printk("Error: didn't find %s device\n", TEST_GPIO_LABEL);
-		return;
-	}
 	/*
 	ret = gpio_pin_configure(pwmtester, TEST_GPIO_PIN, GPIO_OUTPUT_ACTIVE | TEST_GPIO_FLAGS);
 	if (ret != 0) {
@@ -405,81 +481,76 @@ void configure_motor(){
 	*/
 }
 
-// Función para enviar PWM al driver
-void motor_run(float dutycycle){
+void configure_valves(){
 	int ret;
 
-	if (dutycycle <0){
-		dutycycle= dutycycle*(-1);
-		gpio_pin_set(motNeg, MNEG_GPIO_PIN, 1);
-		gpio_pin_set(motPos, MPOS_GPIO_PIN, 0);
-	}
-	else{
-		gpio_pin_set(motNeg, MNEG_GPIO_PIN, 0);
-		gpio_pin_set(motPos, MPOS_GPIO_PIN, 1);
-	}
-
-	if (dutycycle>100){	
-		dutycycle=100;
-	}
-	
-
-	//pulse_width= (uint32_t) dutycycle*period_usec/100;
-	//ret = pwm_pin_set_usec(pwm, PWM_CHANNEL, period_usec, pulse_width, PWM_FLAGS);
-	pulse_width= (uint32_t) dutycycle*period_nsec/100;
-	ret = pwm_pin_set_nsec(pwm, PWM_CHANNEL, period_nsec, pulse_width, PWM_FLAGS);
-	if (ret) {
-		printk("Error %d: failed to set pulse width %d\n", pulse_width + ret);
+	valve_air = device_get_binding(PWM_VALVE1_LABEL);
+	if (!valve_air) {
+		printk("Error: didn't find %s device\n", PWM_VALVE1_LABEL);
 		return;
 	}
-}
 
-// Control de posición del motor
-void position_control(){
-	
-	old_error = error;
-	error = position_ref-pulses;
-	u = kp*error + ki*(error+old_error);
-
-	if (abs(error)<position_ref*0.05){
-		//gpio_pin_set(motEn,ENMOT_GPIO_PIN,0);
+	valve_oxy = device_get_binding(PWM_VALVE2_LABEL);
+	if (!valve_oxy) {
+		printk("Error: didn't find %s device\n", PWM_VALVE2_LABEL);
+		return;
 	}
 
-	motor_run(u);
+	valve_out = device_get_binding(PWM_VALVE3_LABEL);
+	if (!valve_out) {
+		printk("Error: didn't find %s device\n", PWM_VALVE3_LABEL);
+		return;
+	}
+
 }
 
-// Main
-void main(void)
-{
+void configure_adc(){
+	printk("Channels: %d \n", ADC_NUM_CHANNELS);
+	int err;
+	dev_adc = DEVICE_DT_GET(ADC_NODE);
 
-////////////////////gpio led0 init////////////////////////////
+	if (!device_is_ready(dev_adc)) {
+		printk("ADC device not found\n");
+		return;
+	}
+	adc_channel_setup(dev_adc, &channel_cfg);
 
+
+	int32_t adc_vref = adc_ref_internal(dev_adc);
+	printk("ADC vref %d.\n", adc_vref);
+}
+
+int adc_read_chan(int channel){
+	int err, i;
+	i = channel;
+	channel_cfg.channel_id = channel_ids[i];
+	sequence.channels = BIT(channel_ids[i]);
+	err = adc_read(dev_adc, &sequence);
+	if (err != 0) {
+		printk("ADC reading failed with error %d.\n", err);
+		return -1;
+	}
+	
+	int16_t raw_value = sample_buffer[0];
+	return raw_value;
+}
+
+int sensor_decode_channel(char name){
+	switch (name){
+	case 'a':
+		return 2;
+		break;
+	case 'b':
+		return 0;
+		break;
+	default:
+		return 1;
+		break;
+	};
+}
+
+void configure_encoder(){
 	int ret;
-
-	dev = device_get_binding(LED0);
-	if (dev == NULL) {
-		return;
-	}
-
-	ret = gpio_pin_configure(dev, PIN, GPIO_OUTPUT_ACTIVE | FLAGS);
-	if (ret < 0) {
-		return;
-	}
-
-	safety_valve1 = device_get_binding(SV1_GPIO_LABEL);
-	ret = gpio_pin_configure(safety_valve1,SV1_GPIO_PIN,GPIO_OUTPUT_ACTIVE | FLAGS);
-	if (safety_valve1 == NULL) {
-		printk("Error: didn't find %s device\n", SV1_GPIO_LABEL);
-		return;
-	}
-
-////////////////////gpio led0 init////////////////////////////
-
-	printk("Hello World! \n");
-	uart_init();
-
-////////////////// Encoder init ////////////////////////////
-	
 	////// Channel A
 
 	chA = device_get_binding(SW0_GPIO_LABEL);
@@ -535,7 +606,92 @@ void main(void)
 	gpio_init_callback(&chB_cb_data, encoder_irq_b, BIT(SW1_GPIO_PIN));
 	gpio_add_callback(chB, &chB_cb_data);
 	printk("Set up button at %s pin %d\n", SW1_GPIO_LABEL, SW1_GPIO_PIN);
+}
 
+void run_valve_test(){
+	int ret;
+	float dutycycle=85;
+	int pulse_width=0;
+	pulse_width= (uint32_t) dutycycle*period_valve_usec/100;
+	ret = pwm_pin_set_usec(valve_air, PWM_VALVE1_CHANNEL, period_valve_usec, pulse_width, PWM_VALVE1_FLAGS);
+
+	dutycycle=85;
+	pulse_width=0;
+	pulse_width= (uint32_t) dutycycle*period_valve_usec/100;
+	ret = pwm_pin_set_usec(valve_oxy, PWM_VALVE2_CHANNEL, period_valve_usec, pulse_width, PWM_VALVE2_FLAGS);
+}
+
+// Función para enviar PWM al driver
+void motor_run(float dutycycle){
+	int ret;
+
+	if (dutycycle <0){
+		dutycycle= dutycycle*(-1);
+		gpio_pin_set(motNeg, MNEG_GPIO_PIN, 1);
+		gpio_pin_set(motPos, MPOS_GPIO_PIN, 0);
+	}
+	else{
+		gpio_pin_set(motNeg, MNEG_GPIO_PIN, 0);
+		gpio_pin_set(motPos, MPOS_GPIO_PIN, 1);
+	}
+
+	if (dutycycle>100){	
+		dutycycle=100;
+	}
+	if (dutycycle<15){
+		dutycycle=0;
+	}
+
+	pulse_width= (uint32_t) dutycycle*period_usec/100;
+	ret = pwm_pin_set_usec(pwm, PWM_CHANNEL, period_usec, pulse_width, PWM_FLAGS);
+	if (ret) {
+		printk("Error %d: failed to set pulse width %d\n", pulse_width + ret);
+		return;
+	}
+}
+
+// Control de posición del motor
+void position_control(){
+	
+	old_error = error;
+	error = position_ref-pulses;
+	u = kp*error + ki*(error+old_error);
+
+	if (abs(error)<position_ref*0.05){
+		gpio_pin_set(motEn,ENMOT_GPIO_PIN,0);
+	}
+
+	motor_run(u);
+}
+
+// Main
+void main(void)
+{
+
+////////////////////gpio led0 init////////////////////////////
+	const struct device *dev;
+	bool led_is_on = true;
+	int ret;
+
+	dev = device_get_binding(LED0);
+	if (dev == NULL) {
+		return;
+	}
+
+	ret = gpio_pin_configure(dev, PIN, GPIO_OUTPUT_ACTIVE | FLAGS);
+	if (ret < 0) {
+		return;
+	}
+////////////////////gpio led0 init////////////////////////////
+
+	printk("Testing 08_controlador_final\n");
+	printk("Hello World! \n");
+	uart_init();
+
+
+////////////////// Encoder init ////////////////////////////
+	
+	configure_encoder();
 
 /////////////////// Timer init //////////////////////////////
 
@@ -548,20 +704,23 @@ void main(void)
 	configure_motor();
 	//gpio_pin_set_raw(pwmtester,TEST_GPIO_PIN,0);
 
+////////////////// Valve init //////////////////////////////
+	configure_valves();
+	run_valve_test();
+	motor_run(75);
+
+////////////////// ADC init ///////////////////////////////
+	configure_adc();
+
 ///////////////// While infinito ///////////////////////////	
 
 	while (1) {
-		//gpio_pin_set(dev, PIN, (int)led_is_on);
-		//led_is_on = !led_is_on;
+		gpio_pin_set(dev, PIN, (int)led_is_on);
+		led_is_on = !led_is_on;
 		k_msleep(SLEEP_TIME);
 
 		//printk("Clock ");
 		//printk("%d\n",nanoseconds_spent);
-		gpio_pin_set(safety_valve1, SV1_GPIO_PIN, (int)sv1_is_on);
-		sv1_is_on = !sv1_is_on;
-		k_msleep(SLEEP_TIME);
-		k_msleep(SLEEP_TIME);
-		k_msleep(SLEEP_TIME);
 		
 
 		printk("C %d U %d E %d P %d \n", pulses, (int) u, (int) error, pulse_width);
@@ -579,11 +738,9 @@ void main(void)
 		
 		/* Verify uart_irq_tx_disable() */
 		uart_irq_tx_disable(uart_dev);
-		k_msleep(SLEEP_TIME);
-		k_msleep(SLEEP_TIME);
+
 		// 
 		//gpio_pin_set_raw(pwmtester,TEST_GPIO_PIN,0);	
 		
 	}
 }
-

@@ -178,28 +178,25 @@ uint16_t b_values;
 
 const struct device *motPos, *motNeg, *motEn, *pwm, *pwmtester;
 uint32_t volatile pulse_width = 0U;
-uint32_t period_usec = 125U;
+uint32_t period_usec = 50U;
+uint32_t period_nsec = 250000U;
 extern void configure_motor();
 extern void motor_run(float);
 extern void position_control();
 int position_ref=10000;			// Referencia de posición deseada
-float kp = 0.01;					// Ganancia proporcional
+float kp = 0.01;				// Ganancia proporcional
+float ki = 0.01;				// Ganancia integral
 float u = 0;					// Señal de control
 float error= 0;
+float old_error =0;
 
-// BORRAR
-#define TEST_NODE	DT_ALIAS(pwmtest) // Pin para habilitar el motor
+#define SV1_NODE	DT_ALIAS(sftyvalve1) // Pin para habilitar el motor
 
-#if DT_NODE_HAS_STATUS(TEST_NODE, okay)
-#define TEST_GPIO_LABEL	DT_GPIO_LABEL(TEST_NODE, gpios)
-#define TEST_GPIO_PIN	DT_GPIO_PIN(TEST_NODE, gpios)
-#define TEST_GPIO_FLAGS	(GPIO_INPUT | DT_GPIO_FLAGS(TEST_NODE, gpios))
-#else
-#error "Unsupported board: TEST devicetree alias is not defined"
-#define TEST_GPIO_LABEL	""
-#define TEST_GPIO_PIN	0
-#define TEST_GPIO_FLAGS	0
-#endif
+const struct device *safety_valve1;
+bool sv1_is_on = false;
+
+const struct device *dev;
+bool led_is_on = true;
 
 // Init
 void uart_init()
@@ -277,7 +274,68 @@ void my_work_handler(struct k_work *work) // Función de interrupción por tiemp
 	nanoseconds_spent = cycles_spent/168000;
 	start_time = k_cycle_get_32();
 	position_control();
+	gpio_pin_set(dev, PIN, (int)led_is_on);
+	led_is_on = !led_is_on;
 
+}
+
+void configure_encoder(){
+	int ret;
+	////// Channel A
+
+	chA = device_get_binding(SW0_GPIO_LABEL);
+	if (chA == NULL) {
+		printk("Error: didn't find %s device\n", SW0_GPIO_LABEL);
+		return;
+	}
+
+	ret = gpio_pin_configure(chA, SW0_GPIO_PIN, SW0_GPIO_FLAGS);
+	if (ret != 0) {
+		printk("Error %d: failed to configure %s pin %d\n",
+		       ret, SW0_GPIO_LABEL, SW0_GPIO_PIN);
+		return;
+	}
+
+	ret = gpio_pin_interrupt_configure(chA,
+					   SW0_GPIO_PIN,
+					   GPIO_INT_EDGE_RISING);
+	if (ret != 0) {
+		printk("Error %d: failed to configure interrupt on %s pin %d\n",
+			ret, SW0_GPIO_LABEL, SW0_GPIO_PIN);
+		return;
+	}
+
+	gpio_init_callback(&chA_cb_data, encoder_irq_a, BIT(SW0_GPIO_PIN));
+	gpio_add_callback(chA, &chA_cb_data);
+	printk("Set up button at %s pin %d\n", SW0_GPIO_LABEL, SW0_GPIO_PIN);
+
+	////// Channel B
+
+	chB = device_get_binding(SW1_GPIO_LABEL);
+	if (chB == NULL) {
+		printk("Error: didn't find %s device\n", SW1_GPIO_LABEL);
+		return;
+	}
+
+	ret = gpio_pin_configure(chB, SW1_GPIO_PIN, SW1_GPIO_FLAGS);
+	if (ret != 0) {
+		printk("Error %d: failed to configure %s pin %d\n",
+		       ret, SW1_GPIO_LABEL, SW1_GPIO_PIN);
+		return;
+	}
+
+	ret = gpio_pin_interrupt_configure(chB,
+					   SW1_GPIO_PIN,
+					   GPIO_INT_EDGE_RISING);
+	if (ret != 0) {
+		printk("Error %d: failed to configure interrupt on %s pin %d\n",
+			ret, SW1_GPIO_LABEL, SW1_GPIO_PIN);
+		return;
+	}
+
+	gpio_init_callback(&chB_cb_data, encoder_irq_b, BIT(SW1_GPIO_PIN));
+	gpio_add_callback(chB, &chB_cb_data);
+	printk("Set up button at %s pin %d\n", SW1_GPIO_LABEL, SW1_GPIO_PIN);
 }
 
 // Funciones para la interrupción por encoder
@@ -365,26 +423,11 @@ void configure_motor(){
 
 	// Habilitar el pin del enable del driver
 	gpio_pin_set(motEn,ENMOT_GPIO_PIN,1);
-
-	pwmtester = device_get_binding(TEST_GPIO_LABEL);
-	if (pwmtester == NULL) {
-		printk("Error: didn't find %s device\n", TEST_GPIO_LABEL);
-		return;
-	}
-	/*
-	ret = gpio_pin_configure(pwmtester, TEST_GPIO_PIN, GPIO_OUTPUT_ACTIVE | TEST_GPIO_FLAGS);
-	if (ret != 0) {
-		printk("Error %d: failed to configure %s pin %d\n",
-		       ret, TEST_GPIO_LABEL, TEST_GPIO_PIN);
-		return;
-	}
-	*/
 }
 
 // Función para enviar PWM al driver
 void motor_run(float dutycycle){
 	int ret;
-
 	if (dutycycle <0){
 		dutycycle= dutycycle*(-1);
 		gpio_pin_set(motNeg, MNEG_GPIO_PIN, 1);
@@ -398,12 +441,11 @@ void motor_run(float dutycycle){
 	if (dutycycle>100){	
 		dutycycle=100;
 	}
-	if (dutycycle<15){
-		dutycycle=0;
-	}
-
+	
 	pulse_width= (uint32_t) dutycycle*period_usec/100;
 	ret = pwm_pin_set_usec(pwm, PWM_CHANNEL, period_usec, pulse_width, PWM_FLAGS);
+	//pulse_width= (uint32_t) dutycycle*period_nsec/100;
+	//ret = pwm_pin_set_nsec(pwm, PWM_CHANNEL, period_nsec, pulse_width, PWM_FLAGS);
 	if (ret) {
 		printk("Error %d: failed to set pulse width %d\n", pulse_width + ret);
 		return;
@@ -412,15 +454,13 @@ void motor_run(float dutycycle){
 
 // Control de posición del motor
 void position_control(){
-	
+	old_error = error;
 	error = position_ref-pulses;
-	u = kp*error;
+	u = kp*error + ki*(error+old_error);
 
-	if (abs(error)<10){
-		gpio_pin_set(motEn,ENMOT_GPIO_PIN,0);
+	if (abs(error)<position_ref*0.05){
+		//gpio_pin_set(motEn,ENMOT_GPIO_PIN,0);
 	}
-	
-
 	motor_run(u);
 }
 
@@ -429,10 +469,8 @@ void main(void)
 {
 
 ////////////////////gpio led0 init////////////////////////////
-	const struct device *dev;
-	bool led_is_on = true;
-	int ret;
 
+	int ret;
 	dev = device_get_binding(LED0);
 	if (dev == NULL) {
 		return;
@@ -442,6 +480,7 @@ void main(void)
 	if (ret < 0) {
 		return;
 	}
+
 ////////////////////gpio led0 init////////////////////////////
 
 	printk("Hello World! \n");
@@ -449,62 +488,7 @@ void main(void)
 
 ////////////////// Encoder init ////////////////////////////
 	
-	////// Channel A
-
-	chA = device_get_binding(SW0_GPIO_LABEL);
-	if (chA == NULL) {
-		printk("Error: didn't find %s device\n", SW0_GPIO_LABEL);
-		return;
-	}
-
-	ret = gpio_pin_configure(chA, SW0_GPIO_PIN, SW0_GPIO_FLAGS);
-	if (ret != 0) {
-		printk("Error %d: failed to configure %s pin %d\n",
-		       ret, SW0_GPIO_LABEL, SW0_GPIO_PIN);
-		return;
-	}
-
-	ret = gpio_pin_interrupt_configure(chA,
-					   SW0_GPIO_PIN,
-					   GPIO_INT_EDGE_RISING);
-	if (ret != 0) {
-		printk("Error %d: failed to configure interrupt on %s pin %d\n",
-			ret, SW0_GPIO_LABEL, SW0_GPIO_PIN);
-		return;
-	}
-
-	gpio_init_callback(&chA_cb_data, encoder_irq_a, BIT(SW0_GPIO_PIN));
-	gpio_add_callback(chA, &chA_cb_data);
-	printk("Set up button at %s pin %d\n", SW0_GPIO_LABEL, SW0_GPIO_PIN);
-
-	////// Channel B
-
-	chB = device_get_binding(SW1_GPIO_LABEL);
-	if (chB == NULL) {
-		printk("Error: didn't find %s device\n", SW1_GPIO_LABEL);
-		return;
-	}
-
-	ret = gpio_pin_configure(chB, SW1_GPIO_PIN, SW1_GPIO_FLAGS);
-	if (ret != 0) {
-		printk("Error %d: failed to configure %s pin %d\n",
-		       ret, SW1_GPIO_LABEL, SW1_GPIO_PIN);
-		return;
-	}
-
-	ret = gpio_pin_interrupt_configure(chB,
-					   SW1_GPIO_PIN,
-					   GPIO_INT_EDGE_RISING);
-	if (ret != 0) {
-		printk("Error %d: failed to configure interrupt on %s pin %d\n",
-			ret, SW1_GPIO_LABEL, SW1_GPIO_PIN);
-		return;
-	}
-
-	gpio_init_callback(&chB_cb_data, encoder_irq_b, BIT(SW1_GPIO_PIN));
-	gpio_add_callback(chB, &chB_cb_data);
-	printk("Set up button at %s pin %d\n", SW1_GPIO_LABEL, SW1_GPIO_PIN);
-
+	configure_encoder();
 
 /////////////////// Timer init //////////////////////////////
 
@@ -514,18 +498,22 @@ void main(void)
 	k_timer_start(&my_timer, K_MSEC(sample_time), K_MSEC(sample_time));
 
 /////////////////// Motor init //////////////////////////////
+	
 	configure_motor();
-	//gpio_pin_set_raw(pwmtester,TEST_GPIO_PIN,0);
 
 ///////////////// While infinito ///////////////////////////	
 
 	while (1) {
-		gpio_pin_set(dev, PIN, (int)led_is_on);
-		led_is_on = !led_is_on;
+		//gpio_pin_set(dev, PIN, (int)led_is_on);
+		//led_is_on = !led_is_on;
 		k_msleep(SLEEP_TIME);
 
 		//printk("Clock ");
 		//printk("%d\n",nanoseconds_spent);
+
+		k_msleep(SLEEP_TIME);
+		k_msleep(SLEEP_TIME);
+		k_msleep(SLEEP_TIME);
 		
 
 		printk("C %d U %d E %d P %d \n", pulses, (int) u, (int) error, pulse_width);
@@ -543,9 +531,7 @@ void main(void)
 		
 		/* Verify uart_irq_tx_disable() */
 		uart_irq_tx_disable(uart_dev);
-
-		// 
-		//gpio_pin_set_raw(pwmtester,TEST_GPIO_PIN,0);	
-		
+		k_msleep(SLEEP_TIME);
+		k_msleep(SLEEP_TIME);		
 	}
 }

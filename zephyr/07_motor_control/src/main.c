@@ -62,10 +62,10 @@ struct k_timer my_timer;
 extern void my_expiry_function(struct k_timer *timer_id);
 extern void my_work_handler(struct k_work *dummy);
 K_WORK_DEFINE(my_work, my_work_handler);
-u32_t start_time;
-u32_t stop_time;
-u32_t cycles_spent;
-u32_t nanoseconds_spent=1;
+uint32_t start_time;
+uint32_t stop_time;
+uint32_t cycles_spent;
+uint32_t nanoseconds_spent=1;
 int sample_time = 10; // milisecs
 
 ////////////////// Encoder Defines ///////////////////////////////////////////
@@ -176,21 +176,20 @@ uint16_t b_values;
 #define ENMOT_GPIO_FLAGS	0
 #endif
 
-const struct device *motPos, *motNeg, *motEn, *pwm, *pwmtester;
+const struct device *motPos, *motNeg, *motEn;
+const struct device *pwm;
 uint32_t volatile pulse_width = 0U;
-uint32_t period_usec = 50U;
+#define PERIOD_USEC 30U
 uint32_t period_nsec = 250000U;
 extern void configure_motor();
 extern void motor_run(float);
 extern void position_control();
-int position_ref=10000;			// Referencia de posición deseada
-float kp = 0.01;				// Ganancia proporcional
-float ki = 0.01;				// Ganancia integral
+int position_ref=1000;			// Referencia de posición deseada
+float kp = 0.1;				// Ganancia proporcional
+float ki = 0.1;				// Ganancia integral
 float u = 0;					// Señal de control
 float error= 0;
 float old_error =0;
-
-#define SV1_NODE	DT_ALIAS(sftyvalve1) // Pin para habilitar el motor
 
 const struct device *safety_valve1;
 bool sv1_is_on = false;
@@ -199,8 +198,8 @@ const struct device *dev;
 bool led_is_on = true;
 
 // Init
-void uart_init()
-{
+
+void uart_init(){
 struct uart_config uart_cfg;
 	int ret;
 	uart_dev = device_get_binding(UART_DEVICE_NAME);
@@ -243,9 +242,9 @@ static void uart_fifo_callback(const struct device *dev, void *user_data)
 		}
 	}
 
-	/* Verify uart_irq_rx_ready() */
+	// Verify uart_irq_rx_ready() 
         if (uart_irq_rx_ready(dev)) {
-                /* Verify uart_fifo_read() */
+                // Verify uart_fifo_read() 
                 uart_fifo_read(dev, &recvData, 1);
 		uart_irq_rx_disable(uart_dev);
                 //printk("%c", recvData);
@@ -344,11 +343,13 @@ void encoder_irq_a(){
 	// Se utiliza solo un canal para decodificar la dirección
 	update_encoder();
 	decode_encoder();
+	//printk("Interrupt chA \n");
 }
 
 void encoder_irq_b(){
 	// La interrupción por el canal B solo actualiza los valores de los canales
 	update_encoder();
+	//printk("Interrupt chB \n");
 }
 
 void update_encoder(struct device *channel){
@@ -377,13 +378,11 @@ void decode_encoder(){
 // Función para inicializar el movimiento del motor
 void configure_motor(){
 	int ret;
-
 	pwm = device_get_binding(PWM_LABEL);
 	if (!pwm) {
 		printk("Error: didn't find %s device\n", PWM_LABEL);
 		return;
 	}
-
 
 	motPos = device_get_binding(MPOS_GPIO_LABEL);
 	if (motPos == NULL) {
@@ -441,11 +440,10 @@ void motor_run(float dutycycle){
 	if (dutycycle>100){	
 		dutycycle=100;
 	}
-	
-	pulse_width= (uint32_t) dutycycle*period_usec/100;
-	ret = pwm_pin_set_usec(pwm, PWM_CHANNEL, period_usec, pulse_width, PWM_FLAGS);
-	//pulse_width= (uint32_t) dutycycle*period_nsec/100;
-	//ret = pwm_pin_set_nsec(pwm, PWM_CHANNEL, period_nsec, pulse_width, PWM_FLAGS);
+	int period = 30;
+	pulse_width= dutycycle*period/100;
+	ret = pwm_pin_set_usec(pwm, PWM_CHANNEL, period, pulse_width, PWM_FLAGS);
+
 	if (ret) {
 		printk("Error %d: failed to set pulse width %d\n", pulse_width + ret);
 		return;
@@ -461,6 +459,7 @@ void position_control(){
 	if (abs(error)<position_ref*0.05){
 		//gpio_pin_set(motEn,ENMOT_GPIO_PIN,0);
 	}
+	
 	motor_run(u);
 }
 
@@ -470,6 +469,7 @@ void main(void)
 
 ////////////////////gpio led0 init////////////////////////////
 
+	
 	int ret;
 	dev = device_get_binding(LED0);
 	if (dev == NULL) {
@@ -480,6 +480,7 @@ void main(void)
 	if (ret < 0) {
 		return;
 	}
+	
 
 ////////////////////gpio led0 init////////////////////////////
 
@@ -500,12 +501,15 @@ void main(void)
 /////////////////// Motor init //////////////////////////////
 	
 	configure_motor();
+	
 
 ///////////////// While infinito ///////////////////////////	
 
 	while (1) {
 		//gpio_pin_set(dev, PIN, (int)led_is_on);
 		//led_is_on = !led_is_on;
+
+		
 		k_msleep(SLEEP_TIME);
 
 		//printk("Clock ");
@@ -520,18 +524,19 @@ void main(void)
 		
 		char_sent = 0;
 		
-		/* Verify uart_irq_callback_set() */
+		// Verify uart_irq_callback_set() 
 		uart_irq_callback_set(uart_dev, uart_fifo_callback);
 		
-		/* Enable Tx/Rx interrupt before using fifo */
-		/* Verify uart_irq_tx_enable() */
+		// Enable Tx/Rx interrupt before using fifo 
+		// Verify uart_irq_tx_enable() 
 		uart_irq_tx_enable(uart_dev);
 				
 		tx_data_idx = 0;
 		
-		/* Verify uart_irq_tx_disable() */
+		// Verify uart_irq_tx_disable() 
 		uart_irq_tx_disable(uart_dev);
 		k_msleep(SLEEP_TIME);
 		k_msleep(SLEEP_TIME);		
+		
 	}
 }

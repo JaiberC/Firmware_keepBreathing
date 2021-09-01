@@ -20,7 +20,7 @@
 
 ////////////////////blinky defines//////////////////////////
 /* 1000 msec = 1 sec */
-#define SLEEP_TIME_MS   1000
+#define SLEEP_TIME_MS   500
 
 /* The devicetree node identifier for the "led0" alias. */
 #define LED0_NODE DT_ALIAS(led0)
@@ -66,7 +66,7 @@ uint32_t start_time;
 uint32_t stop_time;
 uint32_t cycles_spent;
 uint32_t nanoseconds_spent=1;
-int sample_time = 10; // milisecs
+int sample_time = 5; // milisecs
 
 ////////////////// Encoder Defines ///////////////////////////////////////////
 #define CHA_PIN 9
@@ -179,14 +179,13 @@ uint16_t b_values;
 const struct device *motPos, *motNeg, *motEn;
 const struct device *pwm;
 uint32_t volatile pulse_width = 0U;
-#define PERIOD_USEC 30U
-uint32_t period_nsec = 250000U;
+#define PERIOD_USEC 60U
 extern void configure_motor();
 extern void motor_run(float);
 extern void position_control();
-int position_ref=1000;			// Referencia de posición deseada
-float kp = 0.1;				// Ganancia proporcional
-float ki = 0.1;				// Ganancia integral
+int position_ref=10000;			// Referencia de posición deseada
+float kp = 0.005;				// Ganancia proporcional
+float ki = 0.03;				// Ganancia integral
 float u = 0;					// Señal de control
 float error= 0;
 float old_error =0;
@@ -437,10 +436,10 @@ void motor_run(float dutycycle){
 		gpio_pin_set(motPos, MPOS_GPIO_PIN, 1);
 	}
 
-	if (dutycycle>100){	
-		dutycycle=100;
+	if (dutycycle>80){	
+		dutycycle=80;
 	}
-	int period = 30;
+	int period = 50;
 	pulse_width= dutycycle*period/100;
 	ret = pwm_pin_set_usec(pwm, PWM_CHANNEL, period, pulse_width, PWM_FLAGS);
 
@@ -455,11 +454,6 @@ void position_control(){
 	old_error = error;
 	error = position_ref-pulses;
 	u = kp*error + ki*(error+old_error);
-
-	if (abs(error)<position_ref*0.05){
-		//gpio_pin_set(motEn,ENMOT_GPIO_PIN,0);
-	}
-	
 	motor_run(u);
 }
 
@@ -514,11 +508,6 @@ void main(void)
 
 		//printk("Clock ");
 		//printk("%d\n",nanoseconds_spent);
-
-		k_msleep(SLEEP_TIME);
-		k_msleep(SLEEP_TIME);
-		k_msleep(SLEEP_TIME);
-		
 
 		printk("C %d U %d E %d P %d \n", pulses, (int) u, (int) error, pulse_width);
 		

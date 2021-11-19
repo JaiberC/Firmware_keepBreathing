@@ -18,6 +18,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include <drivers/adc.h>
+#include <sys/cbprintf.h>
 
 ////////////////////blinky defines//////////////////////////
 /* 1000 msec = 1 sec */
@@ -63,10 +64,10 @@ struct k_timer my_timer;
 extern void my_expiry_function(struct k_timer *timer_id);
 extern void my_work_handler(struct k_work *dummy);
 K_WORK_DEFINE(my_work, my_work_handler);
-u32_t start_time;
-u32_t stop_time;
-u32_t cycles_spent;
-u32_t nanoseconds_spent=1;
+uint32_t start_time;
+uint32_t stop_time;
+uint32_t cycles_spent;
+uint32_t nanoseconds_spent=1;
 int sample_time = 10; // milisecs
 
 ////////////////// Encoder Defines ///////////////////////////////////////////
@@ -147,7 +148,7 @@ uint16_t b_values;
 #define PWM_VALVE1_CHANNEL	0
 #define PWM_VALVE1_FLAGS	0
 #endif
-
+/*
 #define PWM_VALVE2_NODE	DT_ALIAS(pwm_valve_oxy)
 #if DT_NODE_HAS_STATUS(PWM_VALVE2_NODE, okay)
 #define PWM_VALVE2_LABEL	DT_PWMS_LABEL(PWM_VALVE2_NODE)
@@ -159,6 +160,7 @@ uint16_t b_values;
 #define PWM_VALVE2_CHANNEL	0
 #define PWM_VALVE2_FLAGS	0
 #endif
+*/
 
 #define PWM_VALVE3_NODE	DT_ALIAS(pwm_valve_out)
 #if DT_NODE_HAS_STATUS(PWM_VALVE3_NODE, okay)
@@ -172,6 +174,29 @@ uint16_t b_values;
 #define PWM_VALVE3_FLAGS	0
 #endif
 
+#define PWM_VALVE4_NODE	DT_ALIAS(pwm_valve_4)
+#if DT_NODE_HAS_STATUS(PWM_VALVE4_NODE, okay)
+#define PWM_VALVE4_LABEL	DT_PWMS_LABEL(PWM_VALVE4_NODE)
+#define PWM_VALVE4_CHANNEL	DT_PWMS_CHANNEL(PWM_VALVE4_NODE)
+#define PWM_VALVE4_FLAGS	DT_PWMS_FLAGS(PWM_VALVE4_NODE)
+#else
+#error "Unsupported board: pwm-valve-4 devicetree alias is not defined"
+#define PWM_VALVE4_LABEL	""
+#define PWM_VALVE4_CHANNEL	0
+#define PWM_VALVE4_FLAGS	0
+#endif
+
+#define PWM_EXTERNAL1_NODE	DT_ALIAS(pwm_ext_1)
+#if DT_NODE_HAS_STATUS(PWM_EXTERNAL1_NODE, okay)
+#define PWM_EXTERNAL1_LABEL	DT_PWMS_LABEL(PWM_EXTERNAL1_NODE)
+#define PWM_EXTERNAL1_CHANNEL	DT_PWMS_CHANNEL(PWM_EXTERNAL1_NODE)
+#define PWM_EXTERNAL1_FLAGS	DT_PWMS_FLAGS(PWM_EXTERNAL1_NODE)
+#else
+#error "Unsupported board: pwm-ext-1 devicetree alias is not defined"
+#define PWM_EXTERNAL1_LABEL	""
+#define PWM_EXTERNAL1_CHANNEL	0
+#define PWM_EXTERNAL1_FLAGS	0
+#endif
 
 
 #define MPOS_NODE	DT_ALIAS(inb) // Dirección positiva del motor: Canal INA del encoder
@@ -288,8 +313,8 @@ struct adc_sequence sequence = {
 ///////////////////////////
 
 const struct device *motPos, *motNeg, *motEn, *pwm, *pwmtester;
-uint32_t volatile pulse_width = 0U;
-uint32_t period_usec = 100000U;
+uint16_t volatile pulse_width = 0U;
+uint16_t period_usec = 50U;
 extern void configure_motor();
 extern void motor_run(float);
 extern void position_control();
@@ -302,14 +327,51 @@ float old_error =0;
 
 
 // Variables para las válvulas
-const struct device *valve_air, *valve_oxy, *valve_out;
-uint32_t period_valve_usec = 2272U;           // 440 Hz
+const struct device *valve_air, *valve_oxy, *valve_4, *pwm_external_1;
+const struct device *valve_out;
+uint16_t period_valve_usec = 2272U;           // 440 Hz
 extern void configure_valves();
+
+
+///////////////////////////////////////////// PRUEBAS ARREGLOS ////////
+// Generación del perfil de onda
+extern void generate_wave_form();
+extern void change3();
+volatile float data_array[10];
+extern void change();
+extern void test_change();
+extern float wave_profile(float , int , float [2], float , float , float );
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/*
+static float exp(float x){
+	float x1,precision,sum=0.0;
+	precision = 0.00001;
+    int n=0;
+    // Sums: 1 + x + x^2/2! + x^3/3! + x^4/4! + x^5/5! + ...
+    //
+    // To get an approximation of e^x.
+    //
+    // Stops when the next term to add becomes smaller than precision.
+    x1=1;
+    do {
+        sum += x1;
+        x1  *= (x/++n);
+    } while (x1 > precision);
+    return sum;
+}
+*/
 
 // Init
 void uart_init(){
-	struct uart_config uart_cfg;
 	int ret;
+	struct uart_config uart_cfg;
+	int rperiod_usecet;
 	uart_dev = device_get_binding(UART_DEVICE_NAME);
 	ret = uart_config_get(uart_dev, &uart_cfg);
 	if (!ret) {
@@ -490,17 +552,33 @@ void configure_valves(){
 		return;
 	}
 
-	valve_oxy = device_get_binding(PWM_VALVE2_LABEL);
-	if (!valve_oxy) {
-		printk("Error: didn't find %s device\n", PWM_VALVE2_LABEL);
-		return;
-	}
-
+	
 	valve_out = device_get_binding(PWM_VALVE3_LABEL);
 	if (!valve_out) {
 		printk("Error: didn't find %s device\n", PWM_VALVE3_LABEL);
 		return;
 	}
+
+	/*
+	valve_oxy = device_get_binding(PWM_VALVE2_LABEL);
+	if (!valve_oxy) {
+		printk("Error: didn't find %s device\n", PWM_VALVE2_LABEL);
+		return;
+	}
+	*/
+
+	valve_4 = device_get_binding(PWM_VALVE4_LABEL);
+	if (!valve_4) {
+		printk("Error: didn't find %s device\n", PWM_VALVE4_LABEL);
+		return;
+	}
+
+	pwm_external_1 = device_get_binding(PWM_EXTERNAL1_LABEL);
+	if (!pwm_external_1) {
+		printk("Error: didn't find %s device\n", PWM_EXTERNAL1_LABEL);
+		return;
+	}
+	
 
 }
 
@@ -610,18 +688,29 @@ void configure_encoder(){
 
 void run_valve_test(){
 	int ret;
-	float dutycycle=85;
+	int dutycycle=85;
 	int pulse_width=0;
-	pulse_width= (uint32_t) dutycycle*period_valve_usec/100;
+	pulse_width= (uint16_t) dutycycle*period_valve_usec/100;
 	ret = pwm_pin_set_usec(valve_air, PWM_VALVE1_CHANNEL, period_valve_usec, pulse_width, PWM_VALVE1_FLAGS);
 
-	dutycycle=85;
-	pulse_width=0;
-	pulse_width= (uint32_t) dutycycle*period_valve_usec/100;
-	ret = pwm_pin_set_usec(valve_oxy, PWM_VALVE2_CHANNEL, period_valve_usec, pulse_width, PWM_VALVE2_FLAGS);
+	dutycycle=60;
+	pulse_width=(uint16_t) dutycycle*period_valve_usec/100;
+	ret = pwm_pin_set_usec(valve_4, PWM_VALVE4_CHANNEL, period_valve_usec, pulse_width, PWM_VALVE4_FLAGS);
+	
+	dutycycle=12;
+	pulse_width=(uint16_t) dutycycle*period_usec/100;
+	ret = pwm_pin_set_usec(pwm_external_1, PWM_EXTERNAL1_CHANNEL, period_usec, pulse_width, PWM_EXTERNAL1_FLAGS);
+	
+	dutycycle=35;
+	pulse_width= (uint16_t) dutycycle*period_valve_usec/100;
+	ret = pwm_pin_set_usec(valve_out, PWM_VALVE3_CHANNEL, period_valve_usec, pulse_width, PWM_VALVE3_FLAGS);
+
+	//dutycycle=85;
+	//pulse_width= (uint32_t) dutycycle*period_valve_usec/100;
+	//ret = pwm_pin_set_usec(valve_oxy, PWM_VALVE2_CHANNEL, period_valve_usec, pulse_width, PWM_VALVE2_FLAGS);
 }
 
-// Función para enviar PWM al driver
+// Función para enviar PWM al driver0
 void motor_run(float dutycycle){
 	int ret;
 
@@ -642,7 +731,7 @@ void motor_run(float dutycycle){
 		dutycycle=0;
 	}
 
-	pulse_width= (uint32_t) dutycycle*period_usec/100;
+	pulse_width= (uint16_t) dutycycle*period_usec/100;
 	ret = pwm_pin_set_usec(pwm, PWM_CHANNEL, period_usec, pulse_width, PWM_FLAGS);
 	if (ret) {
 		printk("Error %d: failed to set pulse width %d\n", pulse_width + ret);
@@ -662,6 +751,67 @@ void position_control(){
 	}
 
 	motor_run(u);
+}
+
+////////////////////////////// PRUEBAS ARRREGLOS //////////
+
+void generate_wave_form(){
+	uint8_t mode = 1;
+	uint8_t P_lim = 100;
+	float PEEP = 5;
+	float t_start=0; // en seg
+	float t_end = 5; // en seg
+	float r_s = 0.5;
+	float IE [] = {2.5, 3};
+	int data_size= 70;
+	float increments = (t_end-t_start)/data_size;
+	float y [data_size];
+	float x[data_size];
+	for (int i =0; i < data_size;i++){
+		x[i]=t_start+increments*i;
+	}
+	printk("I got here 1");
+	for (int i =0; i < data_size;i++){
+		y[i]=wave_profile(x[i],0,IE,t_end,P_lim,r_s);
+	}
+
+	for(int i = 0; i < data_size; i++){
+		printk("%d \n", (int) (y[i]*1000));
+  	}
+}
+
+float wave_profile(float time_value, int mode, float IE[2], float t_end, float P_lim, float r_s){
+	float x = time_value;
+	float constant;
+	float t_I =  t_end * (IE[0]/(IE[0]+IE[1]));
+	float b = r_s*t_I;
+	float output=0;
+
+	if (mode == 0){
+		constant  = t_I/exp(-2*t_I);
+		if (0<x && x<=t_I){
+			output = x;
+		}
+		else if (t_I<x && x <t_end){
+			output =  constant*exp(-2*x);
+		}
+
+		else output=0;
+	}
+	else {
+		constant = P_lim/pow(b,2);
+		if(0<x && x<=b){
+			output =  (P_lim - constant*pow(x-b,2));
+		}
+		else if (b<x && x <=t_I){
+			output = P_lim*10;
+		}
+		else if (t_I<x && x<t_end){
+			output= (P_lim*exp(2*t_I)*exp(-2*x));
+		}
+		else  output=0;
+	}
+	return output;
 }
 
 // Main
@@ -684,7 +834,7 @@ void main(void)
 	}
 ////////////////////gpio led0 init////////////////////////////
 
-	printk("Testing 08_controlador_final\n");
+	printk("Testing 08_controlador_final(Reduced)\n");
 	printk("Hello World! \n");
 	uart_init();
 
@@ -695,14 +845,15 @@ void main(void)
 
 /////////////////// Timer init //////////////////////////////
 
+	
 	printk("Hello World Again! \n");
 	start_time = k_cycle_get_32();		// Captura del número de ciclos de reloj actuales
 	k_timer_init(&my_timer, my_expiry_function, NULL);
 	k_timer_start(&my_timer, K_MSEC(sample_time), K_MSEC(sample_time));
+	
 
 /////////////////// Motor init //////////////////////////////
 	configure_motor();
-	//gpio_pin_set_raw(pwmtester,TEST_GPIO_PIN,0);
 
 ////////////////// Valve init //////////////////////////////
 	configure_valves();
@@ -712,6 +863,10 @@ void main(void)
 ////////////////// ADC init ///////////////////////////////
 	configure_adc();
 
+///////////////// Array tests /////////////////////////////
+	//test_change();
+	generate_wave_form();
+
 ///////////////// While infinito ///////////////////////////	
 
 	while (1) {
@@ -719,28 +874,27 @@ void main(void)
 		led_is_on = !led_is_on;
 		k_msleep(SLEEP_TIME);
 
+		
 		//printk("Clock ");
 		//printk("%d\n",nanoseconds_spent);
 		
 
-		printk("C %d U %d E %d P %d \n", pulses, (int) u, (int) error, pulse_width);
+		//printk("C %d U %d E %d P %d \n", pulses, (int) u, (int) error, pulse_width);
 		
 		char_sent = 0;
 		
-		/* Verify uart_irq_callback_set() */
+		// Verify uart_irq_callback_set() 
 		uart_irq_callback_set(uart_dev, uart_fifo_callback);
 		
-		/* Enable Tx/Rx interrupt before using fifo */
-		/* Verify uart_irq_tx_enable() */
+		// Enable Tx/Rx interrupt before using fifo
+		// Verify uart_irq_tx_enable() 
 		uart_irq_tx_enable(uart_dev);
 				
 		tx_data_idx = 0;
 		
-		/* Verify uart_irq_tx_disable() */
-		uart_irq_tx_disable(uart_dev);
+		// Verify uart_irq_tx_disable() 
+		uart_irq_tx_disable(uart_dev);		
 
-		// 
-		//gpio_pin_set_raw(pwmtester,TEST_GPIO_PIN,0);	
 		
 	}
 }

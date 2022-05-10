@@ -51,6 +51,7 @@ static volatile bool data_transmitted;
 static volatile bool data_received; 
 char buffer_read[5];
 volatile int contador=0;
+volatile int rx_counter=0;
 
 #define DATA_SIZE	(sizeof(fifo_data) - 1)
 
@@ -101,14 +102,20 @@ static void uart_fifo_callback(const struct device *dev, void *user_data)
 	/* Verify uart_irq_rx_ready() */
         if (uart_irq_rx_ready(dev)) {
                 /* Verify uart_fifo_read() */
-                uart_fifo_read(dev, &recvData, 1);
+        	rx_counter++;
+            	uart_fifo_read(dev, &recvData, 1);
 		uart_irq_rx_disable(uart_dev);
-                //printk("%c", recvData);
+                printk("%c", recvData);
 		sprintf(buffer_read,"%s%c",buffer_read,recvData);
 
-                if ((recvData == '\n') || (recvData == '\r')) {
-			printk("========== %s\n",buffer_read);
+            	if ((recvData == '\n') || (recvData == '\r')) {
+		        int i;
+			i=atoi(buffer_read);
+			printk("Char array %s\n",buffer_read);
+			printk("Number + 1: %d\n",i+1);
+			printk("Number * 2: %d\n",i*2);
 			buffer_read[0]=0;
+			rx_counter=0;
                 }
         }
 
@@ -145,7 +152,7 @@ void main(void)
 	uart_irq_callback_set(uart_dev, uart_fifo_callback);
 
 	while (1) {
-		printk("COntador: %d\n",contador);
+		//printk("Contador: %d\n",contador);
 		gpio_pin_set(dev, PIN, (int)led_is_on);
 		led_is_on = !led_is_on;
 		k_msleep(SLEEP_TIME);
@@ -154,7 +161,7 @@ void main(void)
 		
 		/* Verify uart_irq_callback_set() */
 		//uart_irq_callback_set(uart_dev, uart_fifo_callback);
-		printk("Que imprima otra cosa\n");
+		//printk("Que imprima otra cosa\n");
 		
 		/* Enable Tx/Rx interrupt before using fifo */
 		/* Verify uart_irq_tx_enable() */
@@ -163,9 +170,7 @@ void main(void)
 		/* Verify uart_irq_rx_enable() */
 	        uart_irq_rx_enable(uart_dev);
         	//while (data_received == false) {}
-		
-		k_sleep(K_MSEC(1000));
-		
+				
 		tx_data_idx = 0;
 		
 		/* Verify uart_irq_tx_disable() */

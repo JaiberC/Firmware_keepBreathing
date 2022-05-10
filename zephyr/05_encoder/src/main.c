@@ -111,20 +111,6 @@ extern void decode_encoder();
 extern void encoder_irq_a();
 extern void encoder_irq_b();
 
-// Pin Read Test 
-#define BLOW_NODE	DT_ALIAS(blow)
-
-#if DT_NODE_HAS_STATUS(BLOW_NODE, okay)
-#define BLOW_GPIO_LABEL	DT_GPIO_LABEL(BLOW_NODE, gpios)
-#define BLOW_GPIO_PIN	DT_GPIO_PIN(BLOW_NODE, gpios)
-#define BLOW_GPIO_FLAGS	(GPIO_INPUT | DT_GPIO_FLAGS(BLOW_NODE, gpios))
-#else
-#error "Unsupported board: blow devicetree alias is not defined"
-#define BLOW_GPIO_LABEL	""
-#define BLOW_GPIO_PIN	0
-#define BLOW_GPIO_FLAGS	0
-#endif
-
 int test;
 
 const struct device *bl, *bh;
@@ -210,9 +196,6 @@ void encoder_irq_b(){
 }
 
 void update_encoder(struct device *channel){
-	// Lectura del pin de prueba. No está relacionado con el encoder
-	values_int = gpio_pin_get(bl, BLOW_GPIO_PIN);
-
 	// Se actualizan los valores de los pines
 	// La captura de valores viejos y nuevos sirve para un tipo de decodificación más completa
 	//  				pero que al momento no se implementará hasta que se considere necesario
@@ -316,20 +299,6 @@ void main(void)
 	gpio_add_callback(chB, &chB_cb_data);
 	printk("Set up button at %s pin %d\n", SW1_GPIO_LABEL, SW1_GPIO_PIN);
 
-/////////////////////////////// Pin read test //////////////////////////////
-
-	bl = device_get_binding(BLOW_GPIO_LABEL);
-	if (bl == NULL) {
-		printk("Error: didn't find %s device\n", BLOW_GPIO_LABEL);
-		return;
-	}
-
-	ret = gpio_pin_configure(bl, BLOW_GPIO_PIN, BLOW_GPIO_FLAGS);
-	if (ret != 0) {
-		printk("Error %d: failed to configure %s pin %d\n",
-		       ret, BLOW_GPIO_LABEL, BLOW_GPIO_PIN);
-		return;
-	}
 
 /////////////////// Timer init //////////////////////////////
 
@@ -347,8 +316,7 @@ void main(void)
 
 		//printk("Clock ");
 		//printk("%d\n",nanoseconds_spent);
-		int test;
-		test = gpio_pin_get(bl, BLOW_GPIO_PIN);
+		
 
 		printk("Count %d Pin %d \n ", pulses, test);
 		

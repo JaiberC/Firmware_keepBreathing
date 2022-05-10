@@ -152,7 +152,11 @@ void main(void)
 	uart_irq_callback_set(uart_dev, uart_fifo_callback);
 
 	while (1) {
+<<<<<<< HEAD
 		//printk("Contador: %d\n",contador);
+=======
+		printk("Contador: %d\n",contador);
+>>>>>>> 1f43912ddb54cb9b8c1e97c42d41a5a18a25811a
 		gpio_pin_set(dev, PIN, (int)led_is_on);
 		led_is_on = !led_is_on;
 		k_msleep(SLEEP_TIME);

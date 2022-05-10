@@ -14,7 +14,11 @@
 #include <device.h>
 #include <drivers/pwm.h>
 
+<<<<<<< HEAD
 #define PWM_MOTOR_NODE	DT_ALIAS(pwm_valve_air) //pwm_motor1
+=======
+#define PWM_MOTOR_NODE	DT_ALIAS(pwm_motor)
+>>>>>>> 1f43912ddb54cb9b8c1e97c42d41a5a18a25811a
 
 #if DT_NODE_HAS_STATUS(PWM_MOTOR_NODE, okay)
 #define PWM_LABEL	DT_PWMS_LABEL(PWM_MOTOR_NODE)
@@ -27,7 +31,12 @@
 #define PWM_FLAGS	0
 #endif
 
+<<<<<<< HEAD
 #define PWM1_MOTOR_NODE	DT_ALIAS(pwm_motor) //pwm_motor1
+=======
+#define PWM1_MOTOR_NODE	DT_ALIAS(pwm_motor1)
+
+>>>>>>> 1f43912ddb54cb9b8c1e97c42d41a5a18a25811a
 #if DT_NODE_HAS_STATUS(PWM1_MOTOR_NODE, okay)
 #define PWM1_LABEL	DT_PWMS_LABEL(PWM1_MOTOR_NODE)
 #define PWM1_CHANNEL	DT_PWMS_CHANNEL(PWM1_MOTOR_NODE)
@@ -43,10 +52,15 @@
  * threshold. The steps should also be small enough, and happen
  * quickly enough, to make the output fade change appear continuous.
  */
+<<<<<<< HEAD
 #define PERIOD_USEC	3333U // 300 Hz Para la válvula de salida
+=======
+#define PERIOD_USEC	10U
+>>>>>>> 1f43912ddb54cb9b8c1e97c42d41a5a18a25811a
 #define NUM_STEPS	10U
 #define STEP_USEC	(PERIOD_USEC / NUM_STEPS)
 #define SLEEP_MSEC	100U
+
 
 
 void main(void)
@@ -67,7 +81,11 @@ void main(void)
 	}
 	
 	pwm1 = device_get_binding(PWM1_LABEL);
+<<<<<<< HEAD
 	if (!pwm1) {
+=======
+	if (!pwm) {
+>>>>>>> 1f43912ddb54cb9b8c1e97c42d41a5a18a25811a
 		printk("Error: didn't find %s device\n", PWM1_LABEL);
 		return;
 	}
@@ -79,6 +97,7 @@ void main(void)
 		ret = pwm_pin_set_usec(pwm, PWM_CHANNEL, PERIOD_USEC,
 				       pulse_width, PWM_FLAGS);
 		int period = PERIOD_USEC;
+<<<<<<< HEAD
 		if (ret) {
 			while(ret){
 				printk("Error %d: failed to set pulse width %d and period %d in ch0\n", ret, pulse_width, period);
@@ -92,6 +111,21 @@ void main(void)
 		ret = pwm_pin_set_usec(pwm1, PWM1_CHANNEL, PERIOD_USEC, pulse_width, PWM1_FLAGS);
 
 		if (ret) {
+=======
+		if (ret) {
+			while(ret){
+				printk("Error %d: failed to set pulse width %d and period %d in ch0\n", ret, pulse_width, period);
+				period= period-2;
+				ret = pwm_pin_set_usec(pwm, PWM_CHANNEL, period,
+				       pulse_width, PWM_FLAGS);
+			}
+			
+			return;
+		}
+		ret = pwm_pin_set_usec(pwm1, PWM1_CHANNEL, PERIOD_USEC, pulse_width, PWM1_FLAGS);
+
+		if (ret) {
+>>>>>>> 1f43912ddb54cb9b8c1e97c42d41a5a18a25811a
 			printk("Error %d: failed to set pulse width in ch1\n", ret);
 			return;
 		}

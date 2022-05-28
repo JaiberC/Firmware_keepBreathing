@@ -3,7 +3,6 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  */
-
 #include <zephyr.h>
 #include <sys/printk.h>
 #include <devicetree.h>
@@ -289,6 +288,10 @@ static uint8_t channel_ids[ADC_NUM_CHANNELS] = {
 #endif
 };
 
+
+
+/////// END OF SETUP FILE /////////
+
 static int16_t sample_buffer[ADC_NUM_CHANNELS];
 const struct device *dev_adc;
 
@@ -330,6 +333,7 @@ float old_error =0;
 const struct device *valve_air, *valve_oxy, *valve_4, *pwm_external_1;
 const struct device *valve_out;
 uint16_t period_valve_usec = 2272U;           // 440 Hz
+uint16_t period_out_valve_usec= 3333U;
 extern void configure_valves();
 
 
